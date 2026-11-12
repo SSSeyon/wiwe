@@ -1,4 +1,4 @@
-const APP_VERSION = '1.9.2';
+const APP_VERSION = '1.9.3';
 
 /* =========================================================
    Constants
@@ -134,7 +134,7 @@ function icon(name, size) { return '<svg aria-hidden="true" width="' + (size || 
    ========================================================= */
 var toastTimer;
 function toast(msg, bad) { var t = $('toast'); t.textContent = msg; t.className = 'toast show' + (bad ? ' bad' : ''); clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.className = 'toast'; }, 3200); }
-function fail(e) { console.error(e); var m = (e && e.message) || String(e); if (m.indexOf('permission') >= 0 || m.indexOf('PERMISSION') >= 0) m = 'You do not have permission to do that.'; toast(m, true); }
+function fail(e) { console.error(e); var m = (e && e.message) || String(e); if (m.indexOf('permission') >= 0 || m.indexOf('PERMISSION') >= 0) { if (typeof isAdmin === 'function' && isAdmin()) { if (typeof checkRules === 'function') checkRules().then(function () { if (S.rulesOutdated) openRulesHelp(); }); m = 'Refused by the database security rules. Checking whether they need updating…'; } else m = 'You do not have permission to do that.'; } toast(m, true); }
 function openModal(title, body, wide) { $('modalTitle').textContent = title; $('modalBody').innerHTML = body; $('modalCard').className = 'modal-card' + (wide ? ' wide' : ''); $('modal').classList.remove('hidden'); document.body.style.overflow = 'hidden'; hydratePhotos($('modalBody')); var f = $('modalBody').querySelector('input:not([type=hidden]):not([type=checkbox]):not([type=radio]),select,textarea'); if (f && window.innerWidth > 700) setTimeout(function () { f.focus(); }, 50); }
 function closeModal() { $('modal').classList.add('hidden'); document.body.style.overflow = ''; S.form = {}; }
 document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('modal').classList.contains('hidden')) closeModal(); });
@@ -376,6 +376,7 @@ function needsApproval(amount) { return Number(amount) > Number(S.settings.appro
 // One list of things that need attention, for the room board and the owner's Today screen
 function alerts() {
   var out = [];
+  if (S.rulesOutdated) out.push({ lvl: 'bad', tag: 'SETUP', t: 'Security rules need updating', s: 'Some actions are being refused. Tap for the 1-minute fix.', go: 'openRulesHelp()' });
   S.data.stays.filter(isOverstay).forEach(function (s) { out.push({ lvl: 'bad', tag: 'OVERSTAY', t: 'Room ' + s.roomNo + ' past check-out', s: s.guestName + ' was due out ' + fmtDate(s.checkOutDate) + '. Extend or check out.', go: "openStay('" + s.id + "')" }); });
   var up = unconfirmedPayments(); if (up.length) out.push({ lvl: 'alert', tag: 'PAYMENT', t: up.length + ' payment' + (up.length > 1 ? 's' : '') + ' not confirmed', s: money(sum(up, function (p) { return p.amount; })) + ' waiting to be matched to the bank', go: "go('payments')" });
   S.data.payments.filter(function (p) { return p.status === 'unconfirmed' && p.amount < 0; }).forEach(function (p) { out.push({ lvl: 'amber', tag: 'REFUND OK?', t: money(-p.amount) + ' refund for ' + p.guestName, s: (p.note || 'Room ' + p.roomNo) + ' · ' + (p.byName || ''), go: "go('payments')" }); });
@@ -532,6 +533,7 @@ function boot() {
     go(VIEWS[h] && canSee(h) ? h : defaultView());
     setTimeout(ensureDailyTasks, 4000);
     setTimeout(function () { if (typeof purgeOldIdPhotos === 'function') purgeOldIdPhotos(); }, 8000);
+    setTimeout(function () { if (typeof checkRules === 'function') checkRules(); }, 2500);
   });
 }
 async function checkSetupOrLogin() {

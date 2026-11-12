@@ -447,3 +447,23 @@ function copySummary() {
   var t = dailySummaryText(addDays(todayStr(), -1)).replace(/\*/g, '');
   (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { toast('Copied'); }).catch(function () { toast('Could not copy', true); });
 }
+
+/* ---------- Are the live security rules up to date? ---------- */
+// Older rules have no "invites" section, so even the owner is refused this harmless read.
+async function checkRules() {
+  if (!isAdmin()) return;
+  try { await db.collection('invites').doc('rules-check').get({ source: 'server' }); S.rulesOutdated = false; }
+  catch (e) { S.rulesOutdated = /permission/i.test((e && (e.code || e.message)) || ''); }
+  scheduleRender();
+}
+function openRulesHelp() {
+  var pid = FIREBASE_CONFIG.projectId;
+  openModal('Update the security rules',
+    '<div class="note warn">The app was updated but the database is still using older security rules, so some actions (renaming usernames, onboarding, hand-overs, laundry, shifts) are refused.</div>' +
+    '<ol style="margin:0;padding-left:20px;line-height:1.8">' +
+    '<li>Open the latest rules: <a href="https://github.com/SSSeyon/wiwe/blob/main/firestore.rules" target="_blank" rel="noopener">firestore.rules on GitHub</a>, then click the <strong>Copy raw file</strong> button (two squares icon).</li>' +
+    '<li>Open <a href="https://console.firebase.google.com/project/' + esc(pid) + '/firestore/rules" target="_blank" rel="noopener">Firebase → Firestore → Rules</a>.</li>' +
+    '<li>Select everything in the editor, paste, and click <strong>Publish</strong>.</li>' +
+    '<li>Come back here and press <strong>Check again</strong>.</li></ol>' +
+    '<div class="form-actions"><button class="btn primary" type="button" onclick="closeModal();checkRules().then(function(){toast(S.rulesOutdated ? \'Still the old rules. Publishing can take a minute.\' : \'Rules are up to date\', S.rulesOutdated)})">Check again</button></div>');
+}
