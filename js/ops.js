@@ -474,8 +474,8 @@ function openSell(itemId) {
     field('Price each (₦)', input('sl-price', '', 'inputmode="numeric" oninput="slCalc()"' + (has('manager') ? '' : ' readonly')), '', has('manager') ? '' : 'Set by the manager') +
     '<div class="field">Total<span class="static strong" id="sl-total"></span></div>' +
     field('Buyer', '<select id="sl-buyer" onchange="slCalc()"><option value="">Walk-in / not a guest</option>' + guests.map(function (s) { return '<option value="' + s.id + '">Room ' + esc(s.roomNo) + ' · ' + esc(s.guestName) + '</option>'; }).join('') + '</select>', 'full') +
-    '</div><fieldset class="group"><legend>Payment</legend><div class="choices" role="radiogroup" aria-label="Payment">' +
-    Object.keys(PAY_METHODS).map(function (k, n) { return '<label class="choice"><input type="radio" name="sl-pay" value="' + k + '"' + (n === 0 ? ' checked' : '') + ' onchange="slCalc()">' + PAY_METHODS[k] + '</label>'; }).join('') +
+    '</div><fieldset class="group"><legend>Payment</legend>' +
+    payChoices('sl-pay', ' onchange="slCalc()"') +
     '<label class="choice" id="sl-bill-opt"><input type="radio" name="sl-pay" value="bill" onchange="slCalc()">Add to room bill</label></div>' +
     '<div class="fields" id="sl-ref-wrap">' + field('Reference', input('sl-ref', '', ''), '', 'Needed for transfer and POS') + '</div></fieldset>' +
     '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Record sale</button></div></form>';
@@ -491,6 +491,7 @@ function slCalc(itemChanged) {
 }
 function saveSell() {
   var it = byId(S.data.items, val('sl-item')), q = Math.max(1, num(val('sl-qty'))), price = num(val('sl-price')), total = q * price, pay = radio('sl-pay'), stay = byId(S.data.stays, val('sl-buyer'));
+  rememberPayMethod(pay);
   if (q > it.qty) return toast('Only ' + it.qty + ' in stock', true);
   if ((pay === 'transfer' || pay === 'pos') && !val('sl-ref')) return toast('Enter the transfer or POS reference', true);
   var b = db.batch(), mv = { itemId: it.id, itemName: it.name, type: 'sale', qty: -q, price: price, total: total, unitCost: it.unitCost || 0, roomNo: stay ? stay.roomNo : '', stayId: stay ? stay.id : '', guestName: stay ? stay.guestName : '', onBill: pay === 'bill', method: pay === 'bill' ? '' : pay };

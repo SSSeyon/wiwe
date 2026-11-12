@@ -169,15 +169,15 @@ function openCheckIn(roomId, reservationId) {
     field('Discount reason', input('ci-discr', '', '')) +
     '</div></fieldset>' +
     '<fieldset class="group"><legend>3 · Payment</legend>' +
-    '<div class="choices" role="radiogroup" aria-label="Payment method">' + Object.keys(PAY_METHODS).map(function (k, i) { return '<label class="choice"><input type="radio" name="ci-method" value="' + k + '"' + (i === 0 ? ' checked' : '') + '>' + PAY_METHODS[k] + '</label>'; }).join('') + '</div>' +
+    payChoices('ci-method') + '</div>' +
     '<div class="fields">' +
-    field('Amount received (₦)', input('ci-amount', '', 'required inputmode="numeric"')) +
+    field('Amount received (₦)', input('ci-amount', '', 'required inputmode="numeric" oninput="this.dataset.touched=1"'), '', 'Filled in with the amount due. Change it if the guest paid a different amount.') +
     field("Sender's name on transfer", input('ci-sender', '', '')) +
     field('Transfer reference / session ID', input('ci-ref', '', ''), '', 'From the receipt. Needed for transfer and POS.') +
     photoField('payPhotos', 'Receipt screenshot') +
     '</div><div class="note warn">This payment stays "Unconfirmed" until the owner matches it to the bank alert. A screenshot alone is not proof.</div></fieldset>' +
     '<fieldset class="group"><legend>4 · Caution fee and key card</legend><div class="fields">' +
-    (st.cautionEnabled ? field('Caution fee (₦, refundable)', input('ci-caution', st.cautionAmount || '', 'inputmode="numeric"')) + field("Guest's bank account for refund", input('ci-cacct', '', ''), '', 'Bank, account number and name') : '') +
+    (st.cautionEnabled ? field('Caution fee (₦, refundable)', input('ci-caution', st.cautionAmount || '', 'inputmode="numeric" oninput="ciCalc()"')) + field("Guest's bank account for refund", input('ci-cacct', '', ''), '', 'Bank, account number and name') : '') +
     field('Key card number issued', input('ci-card', '', 'required')) +
     '</div><label class="check"><input type="checkbox" id="ci-agree" required>Guest has read the house rules and agrees that missing or damaged items are paid for' + (st.cautionEnabled ? ' from the caution fee' : '') + '.</label></fieldset>' +
     '<div class="card" id="ci-sum"></div>' +
@@ -189,6 +189,16 @@ function guestLookup() {
   var ph = val('ci-phone').replace(/\D/g, ''); if (ph.length < 7) return;
   var prev = S.data.stays.filter(function (s) { return s.phone && s.phone.replace(/\D/g, '') === ph && s.status === 'checked_out'; });
   var box = $('ci-lookup'); if (!box) return;
+  if (!prev.length && !guestLookup.asked) {
+    // Older than the 90 days kept in memory: ask the database once
+    guestLookup.asked = true; box.innerHTML = '';
+    db.collection('stays').where('phone', '==', val('ci-phone')).limit(10).get().then(function (snap) {
+      var old = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }).filter(function (s) { return s.status === 'checked_out' && !S.data.stays.some(function (x) { return x.id === s.id; }); });
+      if (old.length) { S.data.stays = S.data.stays.concat(old); guestLookup(); }
+      guestLookup.asked = false;
+    }).catch(function () { guestLookup.asked = false; });
+    return;
+  }
   if (!prev.length) { box.innerHTML = ''; return; }
   var issues = prev.filter(function (s) { return (s.missing && s.missing.length) || s.damageNote || s.cautionDeductions > 0; });
   box.innerHTML = '<div class="note ' + (issues.length ? 'bad' : 'ok') + '">Returning guest: ' + prev.length + ' previous stay' + (prev.length > 1 ? 's' : '') + ' (last: Room ' + esc(prev[0].roomNo) + ', ' + fmtDate(prev[0].checkInDate) + '). ' + (issues.length ? issues.length + ' stay(s) had missing items or damage.' : 'No damage or issues recorded.') + '</div>';
@@ -200,6 +210,7 @@ function ciCalc() {
   var out = addDays(todayStr(), n), total = Math.max(0, rate * n - d), caution = S.settings.cautionEnabled ? num(val('ci-caution')) : 0;
   $('ci-out').textContent = fmtDate(out) + ', ' + S.settings.checkOutTime;
   $('ci-rate').textContent = money(rate) + (isAdmin() ? '' : ' (set by admin)');
+  prefillAmount('ci-amount', total + caution);
   $('ci-sum').innerHTML = '<div class="row between"><span>Room ' + esc(r.number) + ' · ' + n + ' night' + (n > 1 ? 's' : '') + '</span><span class="money">' + money(rate * n) + '</span></div>' +
     (d ? '<div class="row between"><span>Discount</span><span class="money">-' + money(d) + '</span></div>' : '') +
     (caution ? '<div class="row between"><span>Caution fee (refundable)</span><span class="money">' + money(caution) + '</span></div>' : '') +
@@ -210,7 +221,7 @@ async function saveCheckIn() {
   var r = byId(S.data.rooms, val('ci-room'));
   if (!r) return toast('Pick a room', true);
   if (r.status !== 'ready') return toast('Room ' + r.number + ' is not Ready', true);
-  var method = radio('ci-method'), amount = num(val('ci-amount')), ref = val('ci-ref');
+  var method = radio('ci-method'); rememberPayMethod(method); var amount = num(val('ci-amount')), ref = val('ci-ref');
   if (method !== 'cash' && !ref) return toast('Enter the transfer or POS reference', true);
   var disc = num(val('ci-disc')), discR = val('ci-discr');
   if (disc > 0 && !discR) return toast('Give a reason for the discount', true);
@@ -336,21 +347,22 @@ function openExtend(id, balanceOnly) {
   var b = '<form class="form" onsubmit="event.preventDefault();saveExtend()"><div class="fields">' +
     (balanceOnly ? info('Balance owed', money(s.balance)) : field('Extra nights', input('ex-n', 1, 'type="number" min="1" required oninput="exCalc()"')) + '<div class="field">New check-out<span class="static" id="ex-out"></span></div>') +
     '<div class="field">Amount due<span class="static" id="ex-due"></span></div></div>' +
-    '<div class="choices" role="radiogroup" aria-label="Payment method">' + Object.keys(PAY_METHODS).map(function (k, i) { return '<label class="choice"><input type="radio" name="ex-method" value="' + k + '"' + (i === 0 ? ' checked' : '') + '>' + PAY_METHODS[k] + '</label>'; }).join('') + '</div>' +
-    '<div class="fields">' + field('Amount received (₦)', input('ex-amount', '', 'required inputmode="numeric"')) + field("Sender's name", input('ex-sender', '', '')) + field('Reference', input('ex-ref', '', '')) + photoField('payPhotos', 'Receipt screenshot') + '</div>' +
+    payChoices('ex-method') + '</div>' +
+    '<div class="fields">' + field('Amount received (₦)', input('ex-amount', '', 'required inputmode="numeric" oninput="this.dataset.touched=1"')) + field("Sender's name", input('ex-sender', '', '')) + field('Reference', input('ex-ref', '', '')) + photoField('payPhotos', 'Receipt screenshot') + '</div>' +
     '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Save</button></div></form>';
   openModal(balanceOnly ? 'Balance payment · ' + s.guestName : 'Extend stay · ' + s.guestName, b);
   exCalc();
 }
 function exCalc() {
   var s = byId(S.data.stays, S.form.stayId); if (!s) return;
-  if (S.form.balanceOnly) { $('ex-due').textContent = money(s.balance); return; }
+  if (S.form.balanceOnly) { $('ex-due').textContent = money(s.balance); prefillAmount('ex-amount', s.balance || 0); return; }
   var n = Math.max(1, num(val('ex-n')));
   $('ex-out').textContent = fmtDate(addDays(s.checkOutDate, n));
+  prefillAmount('ex-amount', n * (s.rate || 0) + (s.balance || 0));
   $('ex-due').textContent = money(n * (s.rate || 0) + (s.balance || 0)) + ((s.balance || 0) > 0 ? ' (incl. ' + money(s.balance) + ' balance)' : '');
 }
 function saveExtend() {
-  var s = byId(S.data.stays, S.form.stayId), method = radio('ex-method'), amount = num(val('ex-amount')), ref = val('ex-ref');
+  var s = byId(S.data.stays, S.form.stayId), method = radio('ex-method'); rememberPayMethod(method); var amount = num(val('ex-amount')), ref = val('ex-ref');
   if (method !== 'cash' && !ref) return toast('Enter the transfer or POS reference', true);
   var upd = {}, extra = 0, n = 0;
   if (!S.form.balanceOnly) {

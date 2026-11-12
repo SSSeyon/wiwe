@@ -1,4 +1,4 @@
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.4.0';
 
 /* =========================================================
    Constants
@@ -66,7 +66,7 @@ if (CONFIGURED) {
 const S = {
   user: null, me: null, view: null, params: {}, tab: {},
   settings: Object.assign({}, DEFAULT_SETTINGS),
-  data: { rooms: [], roomTypes: [], stays: [], payments: [], tasks: [], jobs: [], assets: [], vendors: [], items: [], moves: [], expenses: [], incidents: [], users: [], laundry: [], shifts: [] },
+  data: { rooms: [], roomTypes: [], stays: [], payments: [], tasks: [], jobs: [], assets: [], vendors: [], items: [], moves: [], expenses: [], incidents: [], users: [], laundry: [], shifts: [], oldUnconfirmed: [], oldPending: [] },
   unsub: [], meta: {}, pending: false, fromCache: true, online: navigator.onLine,
   adminUntil: 0, photoCache: {}, form: {}
 };
@@ -137,7 +137,8 @@ var ICONS = {
   camera: '<path d="M4 7h3l2-3h6l2 3h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="4"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   dot: '<circle cx="12" cy="12" r="4"/>',
-  home: '<path d="M3 11l9-8 9 8M5 9v12h14V9"/>'
+  home: '<path d="M3 11l9-8 9 8M5 9v12h14V9"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>'
 };
 function icon(name, size) { return '<svg aria-hidden="true" width="' + (size || 18) + '" height="' + (size || 18) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[name] || '') + '</svg>'; }
 
@@ -147,7 +148,7 @@ function icon(name, size) { return '<svg aria-hidden="true" width="' + (size || 
 var toastTimer;
 function toast(msg, bad) { var t = $('toast'); t.textContent = msg; t.className = 'toast show' + (bad ? ' bad' : ''); clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.className = 'toast'; }, 3200); }
 function fail(e) { console.error(e); var m = (e && e.message) || String(e); if (m.indexOf('permission') >= 0 || m.indexOf('PERMISSION') >= 0) { if (typeof isAdmin === 'function' && isAdmin()) { if (typeof checkRules === 'function') checkRules().then(function () { if (S.rulesOutdated) openRulesHelp(); }); m = 'Refused by the database security rules. Checking whether they need updating…'; } else m = 'You do not have permission to do that.'; } toast(m, true); }
-function openModal(title, body, wide) { $('modalTitle').textContent = title; $('modalBody').innerHTML = body; $('modalCard').className = 'modal-card' + (wide ? ' wide' : ''); $('modal').classList.remove('hidden'); document.body.style.overflow = 'hidden'; hydratePhotos($('modalBody')); var f = $('modalBody').querySelector('input:not([type=hidden]):not([type=checkbox]):not([type=radio]),select,textarea'); if (f && window.innerWidth > 700) setTimeout(function () { f.focus(); }, 50); }
+function openModal(title, body, wide) { $('modalTitle').textContent = title; $('modalBody').innerHTML = body; $('modalCard').className = 'modal-card' + (wide ? ' wide' : ''); $('modal').classList.remove('hidden'); document.body.style.overflow = 'hidden'; hydratePhotos($('modalBody')); labelTables($('modalBody')); var f = $('modalBody').querySelector('input:not([type=hidden]):not([type=checkbox]):not([type=radio]),select,textarea'); if (f && window.innerWidth > 700) setTimeout(function () { f.focus(); }, 50); }
 function closeModal() { $('modal').classList.add('hidden'); document.body.style.overflow = ''; S.form = {}; }
 document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('modal').classList.contains('hidden')) closeModal(); });
 function toggleMenu() {} // the sidebar menu was replaced by the Home page of cards (v2.0)
@@ -162,13 +163,13 @@ function setTheme(t) { if (!THEMES[t]) t = 'colour'; document.body.setAttribute(
 function setTextSize(z) { document.documentElement.setAttribute('data-size', z); try { localStorage.setItem('wiwe_size', z); } catch (e) {} if (S.view === 'account') render(); }
 function paintDarkIcon() {
   var dark = document.body.classList.contains('dark-mode'), t = curTheme();
-  var el = $('darkIcon'); if (el) el.innerHTML = icon(dark ? 'moon' : 'sun', 13);
-  var sw = $('darkSwitch'); if (sw) { sw.setAttribute('aria-checked', String(dark)); sw.classList.toggle('on', dark); }
+  var el = $('darkIcon'); if (el) el.textContent = dark ? '🌙' : '☀️'; // shows the CURRENT mode, like the Apowo app
+  var sw = $('darkSwitch'); if (sw) { var lbl = dark ? 'Dark mode on. Switch to light mode' : 'Light mode on. Switch to dark mode'; sw.setAttribute('aria-label', lbl); sw.title = lbl; }
   var cur = $('themeCurrent'); if (cur) { cur.className = 'sw sw-current sw-' + t; cur.title = 'Colour scheme: ' + THEME_NAMES[t]; }
   document.querySelectorAll('.tm-opt').forEach(function (b) { var on = b.getAttribute('data-t') === t; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
   var m = document.querySelector('meta[name=theme-color]'); if (m) m.setAttribute('content', dark ? '#121212' : THEMES[t]);
 }
-(function () { var t = 'colour', d = false, z = 'normal'; try { t = localStorage.getItem('wiwe_theme') || 'colour'; d = localStorage.getItem('wiwe_dark') === '1'; z = localStorage.getItem('wiwe_size') || 'normal'; } catch (e) {} document.body.setAttribute('data-theme', THEMES[t] ? t : 'colour'); document.documentElement.setAttribute('data-size', z); if (d) document.body.classList.add('dark-mode'); document.addEventListener('DOMContentLoaded', paintDarkIcon); })();
+(function () { var t = 'colour', d = false, z = 'normal'; try { t = localStorage.getItem('wiwe_theme') || 'colour'; var sd = localStorage.getItem('wiwe_dark'); d = sd === null ? !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) : sd === '1'; z = localStorage.getItem('wiwe_size') || 'normal'; } catch (e) {} document.body.setAttribute('data-theme', THEMES[t] ? t : 'colour'); document.documentElement.setAttribute('data-size', z); if (d) document.body.classList.add('dark-mode'); document.addEventListener('DOMContentLoaded', paintDarkIcon); })();
 
 /* A button that opens a short list of actions: keeps headers to one or two buttons. items: [[label, onclickJs], ...] */
 function actionMenu(label, items, primary) {
@@ -176,6 +177,12 @@ function actionMenu(label, items, primary) {
     items.map(function (i) { return '<button type="button" role="menuitem" class="act-item" onclick="this.closest(\'details\').open=false;' + i[1] + '">' + esc(i[0]) + '</button>'; }).join('') + '</div></details>';
 }
 document.addEventListener('click', function (e) { document.querySelectorAll('details.act-menu[open]').forEach(function (d) { if (!d.contains(e.target)) d.open = false; }); });
+/* Payment method radios that start on the method this device used last */
+function lastPayMethod() { try { var m = localStorage.getItem('wiwe_paymethod'); return PAY_METHODS[m] ? m : 'transfer'; } catch (e) { return 'transfer'; } }
+function rememberPayMethod(m) { if (PAY_METHODS[m]) try { localStorage.setItem('wiwe_paymethod', m); } catch (e) {} }
+function payChoices(name, extra) { var d = lastPayMethod(); return '<div class="choices" role="radiogroup" aria-label="Payment method">' + Object.keys(PAY_METHODS).map(function (k) { return '<label class="choice"><input type="radio" name="' + name + '" value="' + k + '"' + (k === d ? ' checked' : '') + (extra || '') + '>' + PAY_METHODS[k] + '</label>'; }).join(''); }
+/* Fill an amount box with the amount due, unless the user has typed in it */
+function prefillAmount(id, amount) { var a = $(id); if (a && !a.dataset.touched) a.value = amount > 0 ? amount : ''; }
 /* A card that folds open and shut; remembers its state while the app is open */
 function foldOpen(key, def) { S.fold = S.fold || {}; return key in S.fold ? S.fold[key] : !!def; }
 function fold(key, title, body, def, extra) { return '<details class="card fold" data-k="' + key + '"' + (foldOpen(key, def) ? ' open' : '') + ' ontoggle="S.fold=S.fold||{};S.fold[this.dataset.k]=this.open"><summary><h2>' + esc(title) + '</h2>' + (extra || '') + '</summary><div class="fold-body">' + body + '</div></details>'; }
@@ -197,8 +204,19 @@ var CARD_ICON_RULES = [
   [/setting|general|business/i, 'gear']
 ];
 function cardIconFor(text) { for (var i = 0; i < CARD_ICON_RULES.length; i++) if (CARD_ICON_RULES[i][0].test(text)) return CARD_ICON_RULES[i][1]; return ICONS[S.view] && S.view !== 'today' ? S.view : 'dot'; }
+/* On phones, tables turn into two-line rows; each cell needs its column name to show beside it */
+function labelTables(root) {
+  if (!root) return;
+  root.querySelectorAll('table:not(.cal)').forEach(function (t) {
+    var heads = Array.prototype.map.call(t.querySelectorAll('thead th'), function (th) { return th.textContent.trim(); });
+    if (!heads.length) return;
+    t.classList.add('stackable');
+    t.querySelectorAll('tbody tr').forEach(function (tr) { Array.prototype.forEach.call(tr.children, function (td, i) { if (heads[i]) td.setAttribute('data-label', heads[i]); }); });
+  });
+}
 function decorateCards(root) {
   if (!root) return;
+  labelTables(root);
   root.querySelectorAll('.card h2, .stat .label').forEach(function (h) {
     if (h.querySelector('.ci') || h.closest('.home-grid')) return;
     var name = cardIconFor(h.textContent || '');
@@ -364,9 +382,11 @@ async function signOut() { if (!confirm('Sign out of Wiwe?')) return; stopListen
    Live data
    ========================================================= */
 function stopListeners() { S.unsub.forEach(function (u) { try { u(); } catch (e) {} }); S.unsub = []; S.meta = {}; }
-function listen(key, query) {
+function listen(key, query, sortKey) {
   var u = query.onSnapshot({ includeMetadataChanges: true }, function (snap) {
-    S.data[key] = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+    var rows = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+    if (sortKey) rows.sort(function (a, b) { return (b[sortKey] || 0) > (a[sortKey] || 0) ? 1 : (b[sortKey] || 0) < (a[sortKey] || 0) ? -1 : 0; });
+    S.data[key] = rows;
     // Track each list separately; the badge shows the combined state (one list's old
     // "pending" flag must not stick after another list reports it is up to date)
     S.meta[key] = { pending: snap.metadata.hasPendingWrites, cache: snap.metadata.fromCache };
@@ -377,24 +397,33 @@ function listen(key, query) {
   }, function (e) { console.warn(key, e.message); delete S.meta[key]; paintSync(); });
   S.unsub.push(u);
 }
+// How far back the app keeps stays, payments, stock moves and expenses in memory.
+// Older records stay in the database: Reports reads any month, and Backup exports everything.
+var RECENT_DAYS = 90;
 function startListeners() {
   stopListeners();
-  var c = function (n) { return db.collection(n); };
+  var c = function (n) { return db.collection(n); }, since = Date.now() - RECENT_DAYS * 86400000, sinceDay = addDays(todayStr(), -RECENT_DAYS);
   listen('rooms', c('rooms'));
   listen('roomTypes', c('roomTypes'));
   listen('users', c('users'));
   listen('items', c('items'));
   listen('assets', c('assets'));
   listen('vendors', c('vendors'));
-  listen('stays', c('stays').orderBy('createdAt', 'desc').limit(600));
-  listen('payments', c('payments').orderBy('at', 'desc').limit(600));
+  // every stay still in the house or booked ahead, plus the last 90 days of history
+  listen('stays', c('stays').where('checkOutDate', '>=', sinceDay), 'createdAt');
+  listen('payments', c('payments').where('at', '>=', since).orderBy('at', 'desc'));
   listen('tasks', c('tasks').orderBy('createdAt', 'desc').limit(300));
   listen('jobs', c('jobs').orderBy('createdAt', 'desc').limit(300));
-  listen('moves', c('moves').orderBy('at', 'desc').limit(500));
-  listen('expenses', c('expenses').orderBy('at', 'desc').limit(500));
+  listen('moves', c('moves').where('at', '>=', since).orderBy('at', 'desc'));
+  listen('expenses', c('expenses').where('at', '>=', since).orderBy('at', 'desc'));
   listen('incidents', c('incidents').orderBy('at', 'desc').limit(200));
   listen('laundry', c('laundry').orderBy('sentAt', 'desc').limit(100));
-  if (has('manager', 'frontdesk')) listen('shifts', c('shifts').orderBy('openedAt', 'desc').limit(60));
+  if (has('manager', 'frontdesk')) {
+    listen('shifts', c('shifts').orderBy('openedAt', 'desc').limit(60));
+    // anything still waiting for the owner never drops out, however old
+    listen('oldUnconfirmed', c('payments').where('status', '==', 'unconfirmed').limit(100));
+    listen('oldPending', c('expenses').where('status', '==', 'pending').limit(100));
+  }
   S.unsub.push(c('settings').doc('general').onSnapshot(function (d) { if (d.exists) S.settings = Object.assign({}, DEFAULT_SETTINGS, d.data()); scheduleRender(); }));
 }
 function paintSync() {
@@ -429,8 +458,9 @@ function lowStock() { return S.data.items.filter(function (i) { return !i.archiv
 function nextService(a) { if (!a.serviceDays) return null; var base = a.lastServiced || a.purchaseDate; if (!base) return todayStr(); return addDays(base, +a.serviceDays); }
 function serviceDue(withinDays) { var lim = addDays(todayStr(), withinDays || 0); return S.data.assets.filter(function (a) { var n = nextService(a); return a.status !== 'retired' && n && n <= lim; }); }
 function openJobs() { return S.data.jobs.filter(function (j) { return ['open', 'assigned', 'in_progress'].indexOf(j.status) >= 0; }); }
-function pendingExpenses() { return S.data.expenses.filter(function (e) { return e.status === 'pending'; }); }
-function unconfirmedPayments() { return S.data.payments.filter(function (p) { return p.status === 'unconfirmed' && p.amount > 0; }); }
+function mergeById(a, b) { var seen = {}; return a.concat(b).filter(function (x) { if (seen[x.id]) return false; seen[x.id] = 1; return true; }); }
+function pendingExpenses() { return mergeById(S.data.expenses, S.data.oldPending || []).filter(function (e) { return e.status === 'pending'; }); }
+function unconfirmedPayments() { return mergeById(S.data.payments, S.data.oldUnconfirmed || []).filter(function (p) { return p.status === 'unconfirmed' && p.amount > 0; }); }
 function refundsDue() { return S.data.stays.filter(function (s) { return s.cautionStatus === 'refund_due'; }); }
 function pendingDiscounts() { return S.data.stays.filter(function (s) { return s.discountStatus === 'pending' && s.status !== 'cancelled'; }); }
 function openIncidents() { return S.data.incidents.filter(function (i) { return !i.resolved; }); }
@@ -484,12 +514,37 @@ function canSee(id) { var n = NAV.find(function (x) { return x.id === id; }); if
 function defaultView() { return 'home'; }
 function go(view, params) { if (!VIEWS[view] || !canSee(view)) view = defaultView(); S.view = view; S.params = params || {}; if (params && params.tab) S.tab[view] = params.tab; if (view === 'reports') S.report = null; closeModal(); window.scrollTo(0, 0); try { history.replaceState(null, '', '#' + view); } catch (e) {} render(); }
 function navCounts() { return { shift: (typeof handoverWaiting === 'function' && handoverWaiting() && !myOpenShift()) ? 1 : 0, payments: unconfirmedPayments().length, today: alerts().length, housekeeping: S.data.tasks.filter(function (t) { return t.status !== 'done' && (!has('manager', 'frontdesk') ? (!t.assignee || t.assignee === S.user.uid) : true); }).length, maintenance: openJobs().length }; }
+/* The jobs each role does most, one tap away (Home on big screens, the + button on phones) */
+function quickActions() {
+  var a = [], desk = has('manager', 'frontdesk');
+  if (isAdmin() && unconfirmedPayments().length) a.push(['Confirm payments', 'payments', "go('payments')"]);
+  if (desk) { a.push(['Check in guest', 'stays', 'openCheckIn()']); a.push(['New reservation', 'calendar', 'openReservation()']); a.push(['Record sale', 'tag', 'openSell()']); }
+  if (!desk && has('housekeeping')) a.push(['My cleaning tasks', 'housekeeping', "go('housekeeping')"]);
+  if (!desk && has('maintenance')) a.push(['Open jobs', 'maintenance', "go('maintenance')"]);
+  a.push(['Report an issue', 'alert', 'openReport()']);
+  if (desk) a.push(['Add expense', 'expenses', "go('expenses');openExpenseForm()"]);
+  return a.slice(0, 5);
+}
+function quickRow() { return '<div class="quick-row">' + quickActions().map(function (q) { return '<button type="button" class="quick-btn" onclick="' + q[2] + '">' + icon(q[1], 18) + '<span>' + esc(q[0]) + '</span></button>'; }).join('') + '</div>'; }
+/* Phone bottom bar: Home · my main section · + quick actions · Me */
+function mainSection() { return has('manager', 'frontdesk') ? 'board' : has('housekeeping') ? 'housekeeping' : 'maintenance'; }
+function paintBottomBar() {
+  var bb = $('bottomBar'); if (!bb || !S.me) return;
+  var ms = mainSection(), n = NAV.find(function (x) { return x.id === ms; }), v = S.view;
+  var tab = function (id, ic, label) { return '<button type="button" class="bb-tab' + (v === id ? ' on' : '') + '" onclick="toggleQuick(false);go(\'' + id + '\')"' + (v === id ? ' aria-current="page"' : '') + '>' + icon(ic, 21) + '<span>' + label + '</span></button>'; };
+  bb.innerHTML = tab('home', 'home', 'Home') + tab(ms, ms, n ? n.label.replace('Room board', 'Rooms') : '') +
+    '<button type="button" class="bb-tab bb-plus" id="bbPlus" aria-expanded="false" aria-controls="quickSheet" onclick="toggleQuick()"><span class="bb-plus-ring">' + icon('plus', 22) + '</span><span>Do</span></button>' +
+    tab('account', 'users', 'Me');
+  $('quickSheet').innerHTML = quickActions().map(function (q) { return '<button type="button" class="qs-item" onclick="toggleQuick(false);' + q[2] + '">' + icon(q[1], 18) + '<span>' + esc(q[0]) + '</span></button>'; }).join('');
+}
+function toggleQuick(open) { var s = $('quickSheet'); if (!s) return; var show = open === undefined ? s.classList.contains('hidden') : open; s.classList.toggle('hidden', !show); var p = $('bbPlus'); if (p) p.setAttribute('aria-expanded', String(show)); }
+document.addEventListener('click', function (e) { var s = $('quickSheet'); if (s && !s.classList.contains('hidden') && !s.contains(e.target) && !(e.target.closest && e.target.closest('#bbPlus'))) toggleQuick(false); });
 var COUNT_WORD = { shift: 'handover waiting', payments: 'to confirm', today: 'alert', housekeeping: 'open', maintenance: 'open' };
 VIEWS.home = {
   title: function () { var h = new Date().getHours(); return (h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening') + ', ' + String((S.me && S.me.name) || '').split(' ')[0]; },
   render: function () {
     var c = navCounts();
-    return '<div class="home-grid">' + NAV.filter(function (n) { return has.apply(null, n.roles); }).map(function (n) {
+    return quickRow() + '<div class="home-grid">' + NAV.filter(function (n) { return has.apply(null, n.roles); }).map(function (n) {
       var k = c[n.id], w = COUNT_WORD[n.id] || '';
       return '<button type="button" class="home-card hc-' + n.id + '" onclick="go(\'' + n.id + '\')">' +
         '<span class="hc-icon">' + icon(n.id, 22) + '</span>' +
@@ -520,6 +575,7 @@ function render() {
   if (active && $(active) && $('view').contains($(active))) { var el = $(active); el.focus(); if (el.setSelectionRange && el.type === 'search') { var l = el.value.length; el.setSelectionRange(l, l); } }
   hydratePhotos($('view'));
   decorateCards($('view'));
+  paintBottomBar();
   if (typeof afterRender === 'function') afterRender();
   document.title = (typeof v.title === 'function' ? v.title() : v.title) + ' · Wiwe';
 }

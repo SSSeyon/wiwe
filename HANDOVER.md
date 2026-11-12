@@ -265,3 +265,11 @@ Do this once, after publishing the rules:
 - Home: all section cards fit on one screen (phones: 3 per row, names only; larger screens: name + description).
 - Tighter spacing app-wide (header, cards, figure tiles, tabs); on phones figure tiles sit two per row and the page title gets its own line.
 - Today: the "Yesterday in brief" text folds away; WhatsApp and Copy buttons stay visible.
+
+## 19. v2.4.0
+- **Dark mode** is one icon in the top-right corner, as in the Apowo (Spendwise) app: ☀️ = light now, 🌙 = dark now; tap to switch. With no choice saved it follows the phone's own setting.
+- **Phone tables:** on screens under 640px every table (except the stays calendar) turns into two-line rows: name first, the other columns as "Label value" after it. Done generically by `labelTables()` in js/core.js.
+- **Quick actions:** Home shows the role's most common jobs as buttons (Confirm payments for the owner when any wait, Check in, New reservation, Record sale, Report an issue, Add expense; housekeeping/maintenance get their task list). See `quickActions()`.
+- **Phone bottom bar:** Home · main section (Rooms / Housekeeping / Maintenance) · **Do** (+, opens the quick actions) · Me.
+- **Fewer steps:** payment method starts on the one last used on that device (`wiwe_paymethod`); Check-in and Extend/Balance fill "Amount received" with the amount due until the user types in it.
+- **Speed:** stays (checking out within the last 90 days or later), payments, stock moves and expenses from the last 90 days are kept in memory (`RECENT_DAYS`). Unconfirmed payments and pending expenses are always loaded whatever their age. Reports still read any month; Backup exports everything; returning-guest lookup asks the database for older stays by phone number.

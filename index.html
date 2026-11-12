@@ -37,7 +37,7 @@
       <button type="button" role="radio" class="tm-opt" data-t="cream" onclick="setTheme('cream')"><span class="sw sw-cream"></span>Black &amp; cream</button>
     </div>
   </div>
-  <button type="button" class="dark-switch" id="darkSwitch" role="switch" aria-checked="false" aria-label="Dark mode" title="Dark mode" onclick="toggleDark()"><span class="knob" id="darkIcon"></span></button>
+  <button type="button" class="theme-btn" id="darkSwitch" aria-label="Switch to dark mode" title="Switch to dark mode" onclick="toggleDark()"><span id="darkIcon" aria-hidden="true">☀️</span></button>
 </div>
 
 <div id="app" class="app hidden">
@@ -55,6 +55,8 @@
       <div id="topActions" class="top-actions"></div>
     </header>
     <main id="view" class="content"></main>
+    <div class="quick-sheet hidden" id="quickSheet" role="menu" aria-label="Quick actions"></div>
+    <nav class="bottom-bar" id="bottomBar" aria-label="Phone navigation"></nav>
   </div>
 </div>
 

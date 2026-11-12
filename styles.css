@@ -564,3 +564,47 @@ body[data-view=home] .titles h1{font-size:22px}
 }
 @media (max-width:860px){.titles{flex:1 1 100%}.grid-stats .stat:last-child:nth-child(odd){grid-column:1/-1}}
 @media (max-width:360px){.home-grid{gap:6px}.home-card{min-height:90px}}
+
+/* ===================== v2.4 ===================== */
+/* dark mode: one icon showing the current mode (as in the Apowo app) */
+.theme-btn{background:none;border:none;cursor:pointer;padding:4px;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:1.15rem;line-height:1;min-width:34px;min-height:34px;transition:background .15s}
+.theme-btn:hover{background:var(--surface)}
+/* phone tables: each row becomes a two-line item, no sideways scrolling */
+@media (max-width:640px){
+  .table-wrap:has(table.stackable){overflow-x:visible}
+  table.stackable thead{display:none}
+  table.stackable,table.stackable tbody{display:block}
+  table.stackable tr{display:flex;flex-wrap:wrap;align-items:center;gap:3px 12px;padding:10px 12px;border-bottom:1px solid var(--border)}
+  table.stackable tr:last-child{border-bottom:none}
+  table.stackable td{display:block;padding:0;border:none;font-size:12.5px;color:var(--dim);text-align:left!important}
+  table.stackable td:first-child{flex:1 1 60%;font-size:14px;color:var(--text);font-weight:600}
+  table.stackable td:nth-child(2){color:var(--text)}
+  table.stackable td.money,table.stackable td.strong{color:var(--text);font-weight:600}
+  table.stackable td[data-label]:not(:first-child):not(:empty)::before{content:attr(data-label) ' ';color:var(--muted);font-weight:400}
+  table.stackable td:empty{display:none}
+  table.stackable td:last-child:has(button){margin-left:auto}
+}
+/* Home: quick actions for this role */
+.quick-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:2px}
+.quick-btn{display:inline-flex;align-items:center;gap:8px;padding:9px 14px;min-height:42px;border-radius:999px;border:1px solid var(--border-strong);background:var(--card);color:var(--text);font-weight:600;font-size:14px;cursor:pointer}
+.quick-btn:hover{border-color:var(--brand);color:var(--brand)}
+.quick-btn:first-child{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+/* phone bottom bar */
+.bottom-bar,.quick-sheet{display:none}
+@media (max-width:860px){
+  body[data-view=home] .quick-row{display:none} /* the + button in the bottom bar does this job on phones */
+  .app{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
+  .bottom-bar{display:grid;grid-template-columns:repeat(4,1fr);position:fixed;left:0;right:0;bottom:0;z-index:80;background:var(--card);border-top:1px solid var(--border);padding:4px 6px calc(4px + env(safe-area-inset-bottom));box-shadow:0 -6px 20px -14px rgba(0,0,0,.4)}
+  .bb-tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:none;border:none;cursor:pointer;color:var(--dim);font-size:11px;font-weight:600;min-height:52px;border-radius:12px}
+  .bb-tab.on{color:var(--brand)}
+  .bb-plus-ring{width:40px;height:30px;border-radius:999px;background:var(--brand);color:var(--on-brand);display:flex;align-items:center;justify-content:center}
+  body[data-theme=colour] .bb-plus-ring{background:linear-gradient(100deg,#4F46E5,#7C3AED 50%,#DB2777);color:#fff}
+  .bb-plus[aria-expanded=true] .bb-plus-ring{transform:rotate(45deg)}
+  .bb-plus-ring{transition:transform .15s ease}
+  .quick-sheet{position:fixed;left:10px;right:10px;bottom:calc(70px + env(safe-area-inset-bottom));z-index:81;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:6px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:2px}
+  .quick-sheet.hidden{display:none!important}
+  .qs-item{display:flex;align-items:center;gap:12px;padding:12px 14px;min-height:48px;border:none;background:none;border-radius:10px;cursor:pointer;font-size:15px;font-weight:600;color:var(--text);text-align:left}
+  .qs-item:hover,.qs-item:focus-visible{background:var(--surface)}
+  .toast{bottom:calc(76px + env(safe-area-inset-bottom))}
+  .home-card{min-height:88px}
+}
