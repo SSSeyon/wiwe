@@ -314,3 +314,18 @@ body.dark-mode .b3d-host{background:#1C2126}
 .bp-room:hover>rect:nth-of-type(1),.bp-room:hover>rect:nth-of-type(2){filter:brightness(1.06)}
 .bp-room:focus-visible{outline:none}
 .bp-room:focus-visible>rect:last-of-type{stroke:#E5007E}
+
+/* ---------- reservations calendar ---------- */
+.cal{table-layout:fixed;min-width:860px;font-size:12px}
+.cal th,.cal td{padding:0;text-align:center;border-bottom:1px solid var(--border);border-right:1px solid var(--border);height:34px}
+.cal thead th{font-size:11px;line-height:1.2;padding:4px 0;white-space:normal}
+.cal .cal-room{width:56px;text-align:left;padding-left:10px;background:var(--surface);position:sticky;left:0;z-index:1}
+.cal .cal-today{background:var(--brand);color:var(--on-brand)}
+.cal .cal-we{background:var(--brand-soft)}
+.cal-free button{width:100%;height:100%;border:none;background:none;cursor:pointer}
+.cal-free button:hover{background:var(--brand-soft)}
+.cal-stay{padding:3px 2px}
+.cal-stay button{width:100%;height:26px;border:none;border-radius:6px;color:#fff;font-weight:600;font-size:12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 6px}
+.cal-in button{background:#3A73D9}.cal-res button{background:#8B6BD6}
+.cal-ooo{color:var(--dim)}
+.summary-pre{white-space:pre-wrap;font-family:var(--font);font-size:13px;line-height:1.55;margin:0 0 12px;color:var(--text)}

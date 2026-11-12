@@ -23,6 +23,7 @@ VIEWS.today = {
       (up.length ? '<div class="note" style="margin-bottom:8px">Open your bank app. Tap "Seen in bank" only when the money is there.</div>' + up.map(paymentRow).join('') : '<div class="muted">Nothing to confirm.</div>') + '</div>' +
       '<div class="card"><h2>Leak watch and approvals</h2><div class="stack">' + alertList(al) + '</div></div></div>' +
       '<div class="narrow"><div class="card"><h2>Rooms</h2><div class="legend">' + Object.keys(ROOM_STATUS).map(function (k) { var n = rooms.filter(function (r) { return displayStatus(r) === k; }).length; return n ? pill(ROOM_STATUS[k].label + ' · ' + n, ROOM_STATUS[k].cls) : ''; }).join('') + '</div><button class="btn block" style="margin-top:12px" type="button" onclick="go(\'board\')">Open room board</button></div>' +
+      dailySummaryCard() +
       '<div class="card"><h2>Recent activity</h2><div id="today-audit" class="muted">Loading…</div></div></div></div>';
     setTimeout(loadRecentAudit, 0);
     return html;
@@ -85,7 +86,7 @@ function reportHtml(R) {
   var html = monthPicker(R.month) + '<section class="grid-stats">' +
     '<div class="stat dark"><span class="label">Revenue</span><span class="value">' + money(revenue) + '</span><span class="sub">' + money(confirmed) + ' confirmed in bank</span></div>' +
     stat('Expenses', money(spent), exps.length + ' records') + stat('Net', money(revenue - spent), revenue ? Math.round((revenue - spent) / revenue * 100) + '% margin' : '', revenue - spent < 0 ? 'warn' : '') +
-    stat('Occupancy', Math.round(occ * 100) + '%', sold + ' of ' + avail + ' room-nights') + stat('Average rate', money(adr), 'Revenue ÷ nights sold') + stat('RevPAR', money(avail ? revenue / avail : 0), 'Revenue ÷ available room-nights') + '</section>';
+    stat('Occupancy', Math.round(occ * 100) + '%', sold + ' of ' + avail + ' room-nights') + stat('Average rate per night', money(adr), 'Money earned ÷ nights sold') + stat('Earnings per room per night', money(avail ? revenue / avail : 0), 'Money earned ÷ every room, every night') + '</section>';
   html += '<div class="split"><div class="wide"><div class="card"><h2>By room</h2><div class="table-wrap"><table><thead><tr><th>Room</th><th class="right">Nights</th><th class="right">Occupancy</th><th class="right">Revenue</th><th class="right">Repairs</th></tr></thead><tbody>' +
     rooms.map(function (r) { var n = nightsByRoom[r.number] || 0; return '<tr><td><strong>' + esc(r.number) + '</strong> <span class="muted small">' + esc(roomType(r).name) + '</span></td><td class="right">' + n + '</td><td class="right">' + Math.round(n / R.days * 100) + '%</td><td class="right money">' + money(revByRoom[r.number] || 0) + '</td><td class="right money">' + money(repByRoom[r.number] || 0) + '</td></tr>'; }).join('') + '</tbody></table></div></div></div>' +
     '<div class="narrow"><div class="card"><h2>Expenses by category</h2>' + (Object.keys(cats).length ? '<div class="bars">' + Object.keys(cats).sort(function (a, b) { return cats[b] - cats[a]; }).map(function (k) { return '<div class="bar-row"><span>' + esc(EXPENSE_CATS[k] || k) + '</span><span class="bar-track"><span style="width:' + Math.round(cats[k] / maxC * 100) + '%"></span></span><span class="right money">' + money(cats[k]) + '</span></div>'; }).join('') + '</div>' : '<div class="muted">No expenses.</div>') + '</div>' +
@@ -167,12 +168,15 @@ function adminGeneral() {
     field('Approval needed above (₦)', input('g-limit', s.approvalLimit, 'inputmode="numeric"'), '', 'Expenses and purchases above this wait for you') +
     '</div></div><div class="card"><h2>Places</h2>' + field('Common areas (one per line)', '<textarea id="g-areas">' + esc((s.commonAreas || []).join('\n')) + '</textarea>', '', 'Used for maintenance and assets, e.g. Generator house, Reception') + '</div>' +
     '<div class="card"><h2>Cleaning checklists</h2><div class="fields">' + field('Turnover (after check-out)', '<textarea id="g-turn" rows="10">' + esc((s.turnoverSteps || []).join('\n')) + '</textarea>', '', 'One step per line. Steps with the word "kitchen" only show for kitchen rooms.') +
-    field('Daily service (guest staying)', '<textarea id="g-daily" rows="10">' + esc((s.dailySteps || []).join('\n')) + '</textarea>') + '</div></div>' +
+    field('Daily service (guest staying)', '<textarea id="g-daily" rows="10">' + esc((s.dailySteps || []).join('\n')) + '</textarea>') +
+    '<label class="check" style="grid-column:1/-1"><input type="checkbox" id="g-dailyon"' + (s.dailyCleaning !== false ? ' checked' : '') + '>Create a daily cleaning task for every guest staying more than one night</label></div></div>' +
+    '<div class="card"><h2>Laundry</h2>' + field('Linen and towel types (one per line)', '<textarea id="g-linen" rows="6">' + esc((s.linenItems || []).join('\n')) + '</textarea>', '', 'Counted when laundry is sent out and when it comes back') + '</div>' +
+    '<div class="card"><h2>Guest privacy</h2>' + field('Delete guest ID photos after (months)', input('g-idm', s.idPhotoMonths == null ? 6 : s.idPhotoMonths, 'type="number" min="0"'), '', 'Counted from check-out. 0 = keep forever. Guest names and ID numbers stay; only the photos are removed.') + '</div>' +
     '<div class="form-actions"><button class="btn primary" type="submit">Save settings</button></div></form>';
 }
 function lines(id) { return val(id).split('\n').map(function (l) { return l.trim(); }).filter(Boolean); }
 function saveGeneral() {
-  var d = { cautionEnabled: val('g-caution'), cautionAmount: num(val('g-camt')), checkInTime: val('g-in'), checkOutTime: val('g-out'), holdHours: num(val('g-hold')), approvalLimit: num(val('g-limit')), commonAreas: lines('g-areas'), turnoverSteps: lines('g-turn'), dailySteps: lines('g-daily') };
+  var d = { cautionEnabled: val('g-caution'), cautionAmount: num(val('g-camt')), checkInTime: val('g-in'), checkOutTime: val('g-out'), holdHours: num(val('g-hold')), approvalLimit: num(val('g-limit')), commonAreas: lines('g-areas'), turnoverSteps: lines('g-turn'), dailySteps: lines('g-daily'), dailyCleaning: val('g-dailyon'), linenItems: lines('g-linen'), idPhotoMonths: num(val('g-idm')) };
   db.collection('settings').doc('general').set(d, { merge: true }).catch(fail); audit('settings_saved', 'settings', 'general', ''); toast('Settings saved');
 }
 
@@ -340,4 +344,64 @@ async function backup() {
     var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 1)], { type: 'application/json' })); a.download = 'wiwe-backup-' + todayStr() + '.json'; a.click();
     audit('backup', 'all', '', '');
   } catch (e) { fail(e); }
+}
+
+/* ---------- Data protection: delete old guest ID photos ---------- */
+// Runs at most once a day when the owner opens the app. Removes ID photos of guests who
+// checked out more than N months ago (Admin settings → General → Guest privacy). Names and ID numbers stay.
+async function purgeOldIdPhotos() {
+  if (!isAdmin()) return;
+  var months = Number(S.settings.idPhotoMonths); if (!months) return;
+  try { if (localStorage.getItem('wiwe_purge') === todayStr()) return; localStorage.setItem('wiwe_purge', todayStr()); } catch (e) {}
+  var cutoff = Date.now() - months * 30.44 * 86400000, removed = 0;
+  try {
+    var snap = await db.collection('stays').where('checkedOutAt', '<', cutoff).get();
+    for (var i = 0; i < snap.docs.length; i++) {
+      var d = snap.docs[i], ids = d.data().idPhotos || []; if (!ids.length) continue;
+      var b = db.batch();
+      ids.forEach(function (pid) { b.delete(db.collection('photos').doc(pid)); });
+      b.update(d.ref, { idPhotos: [], idPhotosDeletedAt: Date.now() });
+      await b.commit(); removed += ids.length;
+    }
+    if (removed) { audit('id_photos_deleted', 'stays', '', removed + ' photo(s) older than ' + months + ' months'); toast(removed + ' old guest ID photo(s) deleted (privacy setting)'); }
+  } catch (e) { console.warn('ID photo clean-up', e.message); }
+}
+
+/* ---------- Owner daily summary (in the app; the email version is scripts/daily-summary.mjs) ---------- */
+function dailySummaryText(day) {
+  var from = parseDate(day).getTime(), to = from + 86400000;
+  function inDay(t) { return t >= from && t < to; }
+  var pays = S.data.payments.filter(function (p) { return inDay(p.at) && p.status !== 'void' && p.amount > 0; });
+  var conf = pays.filter(function (p) { return p.status === 'confirmed'; });
+  var exps = S.data.expenses.filter(function (e) { return inDay(e.at) && e.status !== 'rejected' && e.status !== 'void'; });
+  var ins = S.data.stays.filter(function (s) { return inDay(s.checkedInAt); }).length, outs = S.data.stays.filter(function (s) { return inDay(s.checkedOutAt); }).length;
+  var rooms = roomsSorted(), occ = rooms.filter(function (r) { return r.status === 'occupied'; }).length;
+  var sales = S.data.moves.filter(function (m) { return m.type === 'sale' && inDay(m.at); });
+  var shortShifts = S.data.shifts.filter(function (s) { return inDay(s.closedAt) && (s.variance || 0) < 0; });
+  var lines = ['*Wiwe Apartments · ' + fmtDate(day) + '*', '',
+    'Money recorded: ' + money(sum(pays, function (p) { return p.amount; })) + ' (' + pays.length + ' payments)',
+    'Confirmed in bank: ' + money(sum(conf, function (p) { return p.amount; })),
+    'Still to confirm (all days): ' + unconfirmedPayments().length,
+    'Item sales: ' + money(sum(sales, function (m) { return m.total; })),
+    'Spent: ' + money(sum(exps, function (e) { return e.amount; })) + (pendingExpenses().length ? ' · ' + pendingExpenses().length + ' waiting for your approval' : ''),
+    '', 'Check-ins: ' + ins + ' · Check-outs: ' + outs, 'Occupied now: ' + occ + ' of ' + rooms.length];
+  var flags = [];
+  S.data.stays.filter(isOverstay).forEach(function (s) { flags.push('Overstay: Room ' + s.roomNo + ' (' + s.guestName + ')'); });
+  shortShifts.forEach(function (s) { flags.push('Cash short ' + money(-s.variance) + ' at end of ' + s.openedByName + "'s shift"); });
+  openIncidents().slice(0, 6).forEach(function (i) { flags.push(i.title); });
+  if (lowStock().length) flags.push(lowStock().length + ' store item(s) low');
+  if (openJobs().length) flags.push(openJobs().length + ' open repair job(s)');
+  if (flags.length) lines.push('', '*Needs attention*'); flags.forEach(function (f) { lines.push('• ' + f); });
+  return lines.join('\n');
+}
+function dailySummaryCard() {
+  var day = addDays(todayStr(), -1), text = dailySummaryText(day);
+  return '<div class="card"><h2>Yesterday in brief</h2><pre class="summary-pre">' + esc(text.replace(/\*/g, '')) + '</pre>' +
+    '<div class="row"><a class="btn small primary" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent(text) + '">Send to WhatsApp</a>' +
+    '<button class="btn small" type="button" onclick="copySummary()">Copy</button></div>' +
+    '<div class="muted small" style="margin-top:8px">The same summary can be emailed to you automatically every morning. See HANDOVER.md, "Daily summary email".</div></div>';
+}
+function copySummary() {
+  var t = dailySummaryText(addDays(todayStr(), -1)).replace(/\*/g, '');
+  (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { toast('Copied'); }).catch(function () { toast('Could not copy', true); });
 }

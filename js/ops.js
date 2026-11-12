@@ -19,6 +19,7 @@ function createTurnoverTask(room, stay, note) {
 }
 // Daily service for guests staying more than one night: one task per stay per day (fixed id, so it is never doubled)
 async function ensureDailyTasks() {
+  if (S.settings.dailyCleaning === false) return;
   if (!has('manager', 'frontdesk')) return;
   var t = todayStr();
   S.data.stays.filter(function (s) { return s.status === 'checked_in' && s.checkInDate < t && s.checkOutDate > t; }).forEach(function (s) {
@@ -44,8 +45,10 @@ function taskCard(t) {
 }
 VIEWS.housekeeping = {
   title: 'Housekeeping',
-  actions: function () { return '<button class="btn" type="button" onclick="openRequest()">+ Guest request</button>'; },
+  actions: function () { return curTab('housekeeping', 'tasks') === 'laundry' ? '<button class="btn primary" type="button" onclick="openLaundrySend()">+ Send laundry</button>' : '<button class="btn" type="button" onclick="openRequest()">+ Guest request</button>'; },
   render: function () {
+    var hkTabs = tabs('housekeeping', [['tasks', 'Cleaning tasks'], ['laundry', 'Laundry (' + S.data.laundry.filter(function (l) { return l.status === 'out'; }).length + ' out)']]);
+    if (curTab('housekeeping', 'tasks') === 'laundry') return hkTabs + laundryView();
     var open = S.data.tasks.filter(function (t) { return t.status !== 'done'; });
     var boss = has('manager', 'frontdesk');
     var inspect = open.filter(function (t) { return t.status === 'inspection'; });
@@ -55,7 +58,7 @@ VIEWS.housekeeping = {
     var doneToday = S.data.tasks.filter(function (t) { return t.status === 'done' && t.doneAt && dateStr(new Date(t.doneAt)) === todayStr(); });
     var order = { turnover: 0, request: 1, daily: 2 };
     todo = sortBy(todo, function (t) { return order[t.type] * 1e13 + t.createdAt; });
-    var html = '<section class="grid-stats">' + stat('To do', todo.length, '') + stat('In progress', mine.length + others.length, '') + stat('Waiting inspection', inspect.length, '', inspect.length && boss ? 'warn' : '') + stat('Done today', doneToday.length, '') + '</section>';
+    var html = hkTabs + '<section class="grid-stats">' + stat('To do', todo.length, '') + stat('In progress', mine.length + others.length, '') + stat('Waiting inspection', inspect.length, '', inspect.length && boss ? 'warn' : '') + stat('Done today', doneToday.length, '') + '</section>';
     if (boss && inspect.length) html += '<div class="card"><h2>Waiting for inspection</h2><div class="task-grid">' + inspect.map(taskCard).join('') + '</div></div>';
     if (mine.length) html += '<div class="card"><h2>My tasks in progress</h2><div class="task-grid">' + mine.map(taskCard).join('') + '</div></div>';
     html += '<div class="card"><h2>To do</h2>' + (todo.length ? '<div class="task-grid">' + todo.map(taskCard).join('') + '</div>' : '<div class="muted">Nothing waiting.</div>') + '</div>';
@@ -609,4 +612,64 @@ function decideExpense(id, status) {
   var note = status === 'approved' ? '' : prompt(status === 'void' ? 'Reason for voiding?' : 'Reason for rejecting?'); if (status !== 'approved' && !note) return;
   db.collection('expenses').doc(id).update({ status: status, decisionNote: note || '', decidedBy: S.user.uid, decidedAt: Date.now() }).catch(fail);
   audit('expense_' + status, 'expense', id, note || ''); closeModal(); toast('Expense ' + status);
+}
+
+/* =========================================================
+   LAUNDRY: linen and towels sent out and counted back in
+   ========================================================= */
+function linenTypes() { return (S.settings.linenItems && S.settings.linenItems.length) ? S.settings.linenItems : DEFAULT_SETTINGS.linenItems; }
+function laundryView() {
+  var out = S.data.laundry.filter(function (l) { return l.status === 'out'; }), done = S.data.laundry.filter(function (l) { return l.status === 'returned'; });
+  var outTotals = {}; out.forEach(function (l) { (l.items || []).forEach(function (it) { outTotals[it.name] = (outTotals[it.name] || 0) + it.qty; }); });
+  var month = todayStr().slice(0, 7), short = done.filter(function (l) { return dateStr(new Date(l.returnedAt)).slice(0, 7) === month; });
+  var shortQty = sum(short, function (l) { return sum(l.short || [], function (x) { return x.qty; }); });
+  var html = '<section class="grid-stats">' + stat('Batches out', out.length, out.length ? 'Oldest sent ' + ago(out[out.length - 1].sentAt) : 'Nothing at the laundry') +
+    stat('Pieces out', sum(Object.keys(outTotals), function (k) { return outTotals[k]; }), Object.keys(outTotals).map(function (k) { return outTotals[k] + ' ' + k.toLowerCase(); }).join(', ')) +
+    stat('Missing this month', shortQty, 'Pieces not returned', shortQty ? 'warn' : '') + '</section>';
+  html += '<div class="card"><h2>At the laundry</h2>' + (out.length ? out.map(function (l) {
+    return '<div class="list-row"><span class="main-t"><strong>' + esc(l.vendor || 'Laundry') + ' · sent ' + fmtDT(l.sentAt) + '</strong><span>' + esc((l.items || []).map(function (it) { return it.qty + ' ' + it.name; }).join(', ')) + ' · by ' + esc(l.sentByName || '') + '</span></span><button class="btn small primary" type="button" onclick="openLaundryReturn(\'' + l.id + '\')">Count it back in</button></div>';
+  }).join('') : '<div class="muted">Nothing out right now.</div>') + '</div>';
+  html += '<div class="card"><h2>Returned</h2>' + (done.length ? done.slice(0, 30).map(function (l) {
+    var sh = l.short || [];
+    return '<div class="list-row"><span class="main-t"><strong>' + esc(l.vendor || 'Laundry') + ' · back ' + fmtDT(l.returnedAt) + '</strong><span>' + esc((l.items || []).map(function (it) { return it.qty + ' ' + it.name; }).join(', ')) + (l.cost ? ' · ' + money(l.cost) : '') + '</span></span>' + (sh.length ? pill(sh.map(function (x) { return x.qty + ' ' + x.name; }).join(', ') + ' missing', 'st-bad') : pill('All back', 'st-ready')) + '</div>';
+  }).join('') : '<div class="muted">No returns yet.</div>') + '</div>';
+  return html;
+}
+function openLaundrySend() {
+  var vendors = S.data.vendors.filter(function (v) { return /laund|wash|dry/i.test((v.trade || '') + ' ' + v.name); });
+  var b = '<form class="form" onsubmit="event.preventDefault();saveLaundrySend()"><div class="fields">' +
+    field('Laundry / person', input('ln-vendor', vendors[0] ? vendors[0].name : '', 'list="ln-vendors" placeholder="e.g. Mama Tunde Laundry"') + '<datalist id="ln-vendors">' + S.data.vendors.map(function (v) { return '<option value="' + esc(v.name) + '">'; }).join('') + '</datalist>', 'full') +
+    '</div><fieldset class="group"><legend>Count what is going out</legend>' +
+    linenTypes().map(function (n, i) { return '<div class="count-row" style="grid-template-columns:1fr 110px"><span>' + esc(n) + '</span><input id="ln-s' + i + '" type="number" min="0" value="0" aria-label="' + esc(n) + ' sent"></div>'; }).join('') +
+    '</fieldset><div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Send</button></div></form>';
+  openModal('Send laundry', b);
+}
+function saveLaundrySend() {
+  var items = linenTypes().map(function (n, i) { return { name: n, qty: num(val('ln-s' + i)) }; }).filter(function (x) { return x.qty > 0; });
+  if (!items.length) return toast('Enter at least one count', true);
+  var ref = db.collection('laundry').doc();
+  ref.set({ vendor: val('ln-vendor'), items: items, status: 'out', sentAt: Date.now(), sentBy: S.user.uid, sentByName: meName(), by: S.user.uid }).catch(fail);
+  audit('laundry_sent', 'laundry', ref.id, items.map(function (x) { return x.qty + ' ' + x.name; }).join(', '));
+  closeModal(); toast('Laundry sent');
+}
+function openLaundryReturn(id) {
+  var l = byId(S.data.laundry, id); S.form = { lnPhotos: [] };
+  var b = '<form class="form" onsubmit="event.preventDefault();saveLaundryReturn(\'' + id + '\')"><div class="note">Count every piece before the laundry person leaves.</div><fieldset class="group"><legend>Count what came back</legend>' +
+    '<div class="count-row muted small"><span>Item</span><span>Sent</span><span>Back</span></div>' +
+    (l.items || []).map(function (it, i) { return '<div class="count-row"><span>' + esc(it.name) + '</span><span>' + it.qty + '</span><input id="ln-r' + i + '" type="number" min="0" value="' + it.qty + '" aria-label="' + esc(it.name) + ' returned"></div>'; }).join('') +
+    '</fieldset><div class="fields">' + field('Laundry bill (₦)', input('ln-cost', '', 'inputmode="numeric"'), '', 'Recorded as an expense') + photoField('lnPhotos', 'Receipt') + '</div>' +
+    '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Save</button></div></form>';
+  openModal('Laundry back from ' + (l.vendor || 'laundry'), b);
+}
+function saveLaundryReturn(id) {
+  var l = byId(S.data.laundry, id), returned = [], short = [], cost = num(val('ln-cost')), now = Date.now();
+  (l.items || []).forEach(function (it, i) { var q = num(val('ln-r' + i)); returned.push({ name: it.name, qty: q }); if (q < it.qty) short.push({ name: it.name, qty: it.qty - q }); });
+  if (short.length && !confirm(short.map(function (x) { return x.qty + ' ' + x.name; }).join(', ') + ' missing. This will be reported to the owner. Continue?')) return;
+  var b = db.batch();
+  b.update(db.collection('laundry').doc(id), { status: 'returned', returned: returned, short: short, cost: cost, returnedAt: now, receivedBy: S.user.uid, receivedByName: meName() });
+  if (short.length) b.set(db.collection('incidents').doc(), Object.assign({ type: 'laundry_short', title: 'Laundry short: ' + short.map(function (x) { return x.qty + ' ' + x.name; }).join(', ') + ' (' + (l.vendor || 'laundry') + ')', resolved: false }, stamp()));
+  if (cost > 0) b.set(db.collection('expenses').doc(), Object.assign({ category: 'cleaning', amount: cost, description: 'Laundry · ' + (l.vendor || ''), paidTo: l.vendor || '', photos: S.form.lnPhotos, status: needsApproval(cost) && !isAdmin() ? 'pending' : 'approved' }, stamp()));
+  b.commit().catch(fail);
+  audit('laundry_returned', 'laundry', id, short.length ? 'short: ' + short.map(function (x) { return x.qty + ' ' + x.name; }).join(', ') : 'all back');
+  closeModal(); toast(short.length ? 'Saved. Shortage reported.' : 'All back');
 }

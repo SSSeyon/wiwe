@@ -1,4 +1,4 @@
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.0';
 
 /* =========================================================
    Constants
@@ -41,6 +41,9 @@ const DEFAULT_SETTINGS = {
     'Restock water and toiletries',
     'Air room, lock windows, switch off AC'
   ],
+  dailyCleaning: true,
+  idPhotoMonths: 6,
+  linenItems: ['Bedsheets', 'Pillowcases', 'Duvet covers', 'Bath towels', 'Hand towels'],
   dailySteps: ['Make bed', 'Empty bins', 'Tidy bathroom, replace towels if asked', 'Top up water and toiletries', 'Sweep floor']
 };
 
@@ -63,7 +66,7 @@ if (CONFIGURED) {
 const S = {
   user: null, me: null, view: null, params: {}, tab: {},
   settings: Object.assign({}, DEFAULT_SETTINGS),
-  data: { rooms: [], roomTypes: [], stays: [], payments: [], tasks: [], jobs: [], assets: [], vendors: [], items: [], moves: [], expenses: [], incidents: [], users: [] },
+  data: { rooms: [], roomTypes: [], stays: [], payments: [], tasks: [], jobs: [], assets: [], vendors: [], items: [], moves: [], expenses: [], incidents: [], users: [], laundry: [], shifts: [] },
   unsub: [], meta: {}, pending: false, fromCache: true, online: navigator.onLine,
   adminUntil: 0, photoCache: {}, form: {}
 };
@@ -108,6 +111,7 @@ function newId(col) { return db.collection(col).doc().id; }
 
 var ICONS = {
   today: '<path d="M3 11l9-8 9 8v10H3z"/>',
+  shift: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   building: '<path d="M4 21V8l8-5 8 5v13"/><path d="M9 21v-4h6v4M8 10h2M14 10h2M8 14h2M14 14h2"/>',
   board: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
   stays: '<path d="M3 18V8M3 14h18v4M21 14v-2a3 3 0 0 0-3-3h-7v5"/>',
@@ -326,6 +330,8 @@ function startListeners() {
   listen('moves', c('moves').orderBy('at', 'desc').limit(500));
   listen('expenses', c('expenses').orderBy('at', 'desc').limit(500));
   listen('incidents', c('incidents').orderBy('at', 'desc').limit(200));
+  listen('laundry', c('laundry').orderBy('sentAt', 'desc').limit(100));
+  if (has('manager', 'frontdesk')) listen('shifts', c('shifts').orderBy('openedAt', 'desc').limit(60));
   S.unsub.push(c('settings').doc('general').onSnapshot(function (d) { if (d.exists) S.settings = Object.assign({}, DEFAULT_SETTINGS, d.data()); scheduleRender(); }));
 }
 function paintSync() {
@@ -372,6 +378,7 @@ function alerts() {
   var out = [];
   S.data.stays.filter(isOverstay).forEach(function (s) { out.push({ lvl: 'bad', tag: 'OVERSTAY', t: 'Room ' + s.roomNo + ' past check-out', s: s.guestName + ' was due out ' + fmtDate(s.checkOutDate) + '. Extend or check out.', go: "openStay('" + s.id + "')" }); });
   var up = unconfirmedPayments(); if (up.length) out.push({ lvl: 'alert', tag: 'PAYMENT', t: up.length + ' payment' + (up.length > 1 ? 's' : '') + ' not confirmed', s: money(sum(up, function (p) { return p.amount; })) + ' waiting to be matched to the bank', go: "go('payments')" });
+  S.data.payments.filter(function (p) { return p.status === 'unconfirmed' && p.amount < 0; }).forEach(function (p) { out.push({ lvl: 'amber', tag: 'REFUND OK?', t: money(-p.amount) + ' refund for ' + p.guestName, s: (p.note || 'Room ' + p.roomNo) + ' · ' + (p.byName || ''), go: "go('payments')" }); });
   var t = todayStr();
   S.data.stays.filter(function (s) { return s.status === 'reserved' && (s.checkInDate < t || (s.checkInDate === t && Date.now() > atTime(t, s.arrivalTime || S.settings.checkInTime) + (S.settings.holdHours || 3) * 3600000)); }).forEach(function (s) { out.push({ lvl: 'amber', tag: 'NO-SHOW?', t: s.guestName + ' has not arrived', s: 'Room ' + s.roomNo + ' held since ' + fmtDate(s.checkInDate) + '. Check in or release it.', go: "openStay('" + s.id + "')" }); });
   openIncidents().forEach(function (i) { out.push({ lvl: 'bad', tag: (i.type || 'ISSUE').replace('_', ' ').toUpperCase(), t: i.title, s: (i.byName || '') + ' · ' + fmtDT(i.at), go: "openIncident('" + i.id + "')" }); });
@@ -397,6 +404,7 @@ function alertList(list, limit) {
 var NAV = [
   { id: 'today', label: 'Today', roles: ['admin', 'manager'] },
   { id: 'board', label: 'Room board', roles: ['manager', 'frontdesk'] },
+  { id: 'shift', label: 'Shift', roles: ['manager', 'frontdesk'] },
   { id: 'stays', label: 'Stays', roles: ['manager', 'frontdesk'] },
   { id: 'payments', label: 'Payments', roles: ['manager', 'frontdesk'] },
   { id: 'housekeeping', label: 'Housekeeping', roles: ['manager', 'frontdesk', 'housekeeping', 'maintenance'] },
@@ -419,7 +427,7 @@ var renderQueued = false;
 function scheduleRender() { if (renderQueued) return; renderQueued = true; requestAnimationFrame(function () { renderQueued = false; render(); }); }
 function render() {
   if (!S.me || !S.view) return;
-  var counts = { payments: unconfirmedPayments().length, today: alerts().length, housekeeping: S.data.tasks.filter(function (t) { return t.status !== 'done' && (!has('manager', 'frontdesk') ? (!t.assignee || t.assignee === S.user.uid) : true); }).length, maintenance: openJobs().length };
+  var counts = { shift: (typeof handoverWaiting === 'function' && handoverWaiting() && !myOpenShift()) ? 1 : 0, payments: unconfirmedPayments().length, today: alerts().length, housekeeping: S.data.tasks.filter(function (t) { return t.status !== 'done' && (!has('manager', 'frontdesk') ? (!t.assignee || t.assignee === S.user.uid) : true); }).length, maintenance: openJobs().length };
   $('nav').innerHTML = NAV.filter(function (n) { return has.apply(null, n.roles); }).map(function (n) {
     var c = counts[n.id];
     return '<button type="button" class="nav-item' + (S.view === n.id ? ' active' : '') + '" onclick="go(\'' + n.id + '\')">' + icon(n.id) + '<span>' + n.label + '</span>' + (c ? '<span class="count">' + c + '</span>' : '') + '</button>';
@@ -478,6 +486,7 @@ function boot() {
     var h = (location.hash || '').replace('#', '');
     go(VIEWS[h] && canSee(h) ? h : defaultView());
     setTimeout(ensureDailyTasks, 4000);
+    setTimeout(function () { if (typeof purgeOldIdPhotos === 'function') purgeOldIdPhotos(); }, 8000);
   });
 }
 async function checkSetupOrLogin() {

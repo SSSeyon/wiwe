@@ -1,6 +1,6 @@
 # Wiwe Apartments: Operations app · Handover
 
-Version 1.7.0 · Vanilla HTML/CSS/JS PWA · GitHub Pages + Firebase (Auth + Firestore)
+Version 1.8.0 · Vanilla HTML/CSS/JS PWA · GitHub Pages + Firebase (Auth + Firestore)
 
 ## 1. Go-live checklist
 
@@ -175,3 +175,46 @@ Timestamps are epoch milliseconds. Dates are `YYYY-MM-DD` strings in local (Lago
   - payment is cash, transfer or POS, which creates a `payments` record of `kind: 'sale'` that the owner confirms; or **Add to room bill**, which adds to `stay.extras` and `stay.balance` to be collected at check-out
   - every sale is a `moves` record with `type: 'sale'`, `total` and `unitCost`, so profit is visible
 - **Reports** count item sales as revenue.
+
+## 13. v1.8.0
+
+- **Edit details:** fix a guest's name, phone, ID and key card. For reservations, also the dates. Every change is written to the activity log with its old and new value.
+- **Move to another room:** works for an in-house guest or a reservation. The guest keeps their booked rate, the old room goes to Dirty with a cleaning task, and the move is recorded on the stay (`roomMoves`).
+- **Early check-out:** check-out works out the unused nights. A refund is recorded as a negative `payments` record with `kind: 'refund'` and status *unconfirmed*. The owner approves or rejects it on Payments, and the Today page shows a "REFUND OK?" alert.
+- **Calendar:** Stays → Calendar shows 21 nights × all rooms. Tap a booking to open it, or tap an empty night to reserve from that date.
+- **Plain report terms:** "Average rate per night" and "Earnings per room per night".
+- **Daily cleaning on/off:** Admin settings → General → Cleaning checklists.
+- **Old ID photos:** deleted automatically after N months (Admin settings → General → Guest privacy; 0 = keep). It runs once a day when the owner opens the app. Names and ID numbers are kept.
+- **Laundry:** Housekeeping → Laundry. Count pieces out and back. Shortages create a `laundry_short` incident, and the bill becomes an expense. Linen types are set in Admin settings → General.
+- **Shift handover:** the Shift page, for front desk and managers.
+  - Start shift: everything the person records is counted (check-ins and outs, payments by method, sales, refunds, expenses).
+  - End shift: the person counts the cash. Being short creates a `cash_short` incident.
+  - The next person accepts or disputes the handover; a dispute creates a `handover_dispute` incident. Accepting starts their own shift.
+- **Daily summary:** a "Yesterday in brief" card on Today with Send to WhatsApp and Copy buttons.
+- **New Firestore collections:** `laundry` and `shifts`. Re-publish `firestore.rules`.
+
+### Daily summary email (one-time setup)
+
+`.github/workflows/daily-summary.yml` runs `scripts/daily-summary.mjs` every day at 06:30 Lagos time, for free on GitHub Actions. It reads Firestore with a service account and emails you through Gmail. To turn it on:
+
+1. **Service account key:** in the Firebase console, go to Project settings → Service accounts → Generate new private key. This downloads a JSON file. Keep it private, and never commit it.
+2. **Gmail app password:** in your Google Account, go to Security → 2-Step Verification (it must be on) → App passwords → create one called "Wiwe".
+3. **Repository secrets:** in the GitHub repo, go to Settings → Secrets and variables → Actions → New repository secret, and add:
+   - `FIREBASE_SERVICE_ACCOUNT`: the whole contents of the JSON file
+   - `GMAIL_USER`: the Gmail address that sends
+   - `GMAIL_APP_PASSWORD`: the 16-character app password
+   - `SUMMARY_TO`: where to send it
+4. **Test it:** in the repo, go to Actions → Daily summary email → Run workflow.
+
+### Checking the security rules on the live site
+
+Do this once, after publishing the rules:
+
+1. Create a test account `fdtest` with only the **Front desk** role, and sign in with it in a private window.
+2. Check that it **can:** check a guest in and out, record payments, sell an item, start and end a shift, and add an expense.
+3. Check that it **can't:**
+   - see Admin settings, Reports, Today or Inventory → Supplies
+   - see "Seen in bank" on payments
+   - change a rate. Try it in the browser console: `db.collection('roomTypes').doc('<id>').update({rate:1})` should fail with a permission error.
+4. Repeat with a **Housekeeping**-only account: it should see only Housekeeping and Maintenance, and must not be able to read payments or stays (try `db.collection('payments').get()` in the console).
+5. When you're done, disable the test accounts in Admin settings → Staff.

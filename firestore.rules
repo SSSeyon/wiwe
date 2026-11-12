@@ -140,6 +140,22 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Laundry batches: anyone on staff can send and count back; nobody deletes.
+    match /laundry/{id} {
+      allow read: if active();
+      allow create: if active() && stampedByMe();
+      allow update: if active();
+      allow delete: if false;
+    }
+
+    // Front desk shifts: opened by yourself; closed by you, accepted by the next person.
+    match /shifts/{id} {
+      allow read: if anyRole(['manager', 'frontdesk']);
+      allow create: if anyRole(['manager', 'frontdesk']) && request.resource.data.openedBy == request.auth.uid;
+      allow update: if anyRole(['manager', 'frontdesk']);
+      allow delete: if false;
+    }
+
     match /photos/{id} {
       allow read: if active();
       allow create: if active() && stampedByMe() && request.resource.data.data.size() < 1000000;

@@ -1,0 +1,24 @@
+name: Daily summary email
+
+on:
+  schedule:
+    - cron: '30 5 * * *'   # 05:30 UTC = 06:30 in Lagos, every day
+  workflow_dispatch: {}    # lets you run it by hand from the Actions tab
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install
+        run: npm install --no-save --no-package-lock firebase-admin@12.7.0 nodemailer@6.9.16
+      - name: Send summary
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          SUMMARY_TO: ${{ secrets.SUMMARY_TO }}
+        run: node scripts/daily-summary.mjs

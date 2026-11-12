@@ -221,14 +221,14 @@ async function saveCheckIn() {
 }
 
 /* ---------- Reservation ---------- */
-function openReservation(roomId) {
+function openReservation(roomId, date) {
   if (!has('manager', 'frontdesk')) return;
   var rooms = roomsSorted().filter(function (r) { return r.status !== 'ooo'; });
   var b = '<form class="form" onsubmit="event.preventDefault();saveReservation()"><div class="fields">' +
     field('Guest name', input('rv-name', '', 'required')) +
     field('Phone number', input('rv-phone', '', 'required type="tel"')) +
     field('Room', '<select id="rv-room">' + rooms.map(function (r) { return '<option value="' + r.id + '"' + (r.id === roomId ? ' selected' : '') + '>' + esc(r.number + ' · ' + roomType(r).name) + '</option>'; }).join('') + '</select>') +
-    field('Arrival date', input('rv-date', todayStr(), 'type="date" required')) +
+    field('Arrival date', input('rv-date', date || todayStr(), 'type="date" required')) +
     field('Nights', input('rv-nights', 1, 'type="number" min="1" required')) +
     field('Expected arrival time', input('rv-time', S.settings.checkInTime, 'type="time"')) +
     field('Note', '<textarea id="rv-note"></textarea>', 'full') +
@@ -280,7 +280,10 @@ function openStay(id) {
     acts.push('<button class="btn" type="button" onclick="openExtend(\'' + s.id + '\')">Extend stay</button>');
     if ((s.balance || 0) > 0) acts.push('<button class="btn" type="button" onclick="openExtend(\'' + s.id + '\', true)">Record balance payment</button>');
     acts.push('<button class="btn primary" type="button" onclick="openCheckOut(\'' + s.id + '\')">Check out</button>');
+    acts.push('<button class="btn" type="button" onclick="openMoveRoom(\'' + s.id + '\')">Move to another room</button>');
   }
+  if ((s.status === 'checked_in' || s.status === 'reserved') && has('manager', 'frontdesk')) acts.push('<button class="btn" type="button" onclick="openEditStay(\'' + s.id + '\')">Edit details</button>');
+  if (s.status === 'reserved' && has('manager', 'frontdesk')) acts.push('<button class="btn" type="button" onclick="openMoveRoom(\'' + s.id + '\')">Change room</button>');
   if (s.discountStatus === 'pending' && isAdmin()) {
     acts.push('<button class="btn primary" type="button" onclick="decideDiscount(\'' + s.id + '\',true)">Approve discount</button>');
     acts.push('<button class="btn danger" type="button" onclick="decideDiscount(\'' + s.id + '\',false)">Reject discount</button>');
@@ -350,6 +353,14 @@ function openCheckOut(id) {
   var items = type.items || [];
   var b = '<form class="form" onsubmit="event.preventDefault();saveCheckOut()">' +
     ((s.balance || 0) > 0 ? '<div class="note bad">Guest still owes ' + money(s.balance) + '. Record the payment before they leave.</div>' : '') +
+    (function () {
+      var unused = daysBetween(todayStr(), s.checkOutDate); if (unused <= 0) return '';
+      S.form.unused = unused;
+      return '<fieldset class="group"><legend>Leaving early · ' + unused + ' unused night' + (unused > 1 ? 's' : '') + '</legend>' +
+        '<div class="muted">Booked until ' + fmtDate(s.checkOutDate) + '. Unused nights at the booked rate come to ' + money(unused * (s.rate || 0)) + '.</div><div class="fields">' +
+        field('Refund to guest (₦)', input('co-refund', 0, 'inputmode="numeric"'), '', 'Leave 0 if your policy is no refund. Refunds wait for owner approval.') +
+        field('Refund to account / reference', input('co-refref', '', '')) + '</div></fieldset>';
+    })() +
     '<fieldset class="group"><legend>Room items · count everything</legend>' +
     (items.length ? '<div class="count-row muted small"><span>Item</span><span>Expected</span><span>Found</span></div>' + items.map(function (it, i) { return '<div class="count-row"><span>' + esc(it.name) + '</span><span>' + it.qty + '</span><input id="co-i' + i + '" type="number" min="0" value="' + it.qty + '" aria-label="' + esc(it.name) + ' found"></div>'; }).join('') : '<div class="muted">No item list for this room type. Add one in Admin settings → Rooms.</div>') +
     '</fieldset>' +
@@ -370,6 +381,12 @@ function saveCheckOut() {
   var now = Date.now(), b = db.batch();
   var upd = { status: 'checked_out', checkedOutAt: now, checkedOutBy: S.user.uid, checkedOutByName: meName(), missing: missing, damageNote: note, damagePhotos: S.form.damagePhotos, cardReturned: !!card, cautionDeductions: s.caution ? Math.min(ded, s.caution) : 0 };
   if (s.caution) { var refund = Math.max(0, s.caution - ded); upd.cautionRefundDue = refund; upd.cautionStatus = refund > 0 ? 'refund_due' : 'refunded'; }
+  if (S.form.unused > 0) {
+    var early = num(val('co-refund'));
+    upd.earlyCheckout = { bookedUntil: s.checkOutDate, unusedNights: S.form.unused, refund: early };
+    upd.checkOutDate = todayStr(); upd.nights = Math.max(1, (s.nights || 0) - S.form.unused);
+    if (early > 0) b.set(db.collection('payments').doc(), Object.assign({ stayId: s.id, roomNo: s.roomNo, guestName: s.guestName, amount: -early, kind: 'refund', method: 'transfer', ref: val('co-refref'), note: 'Early check-out: ' + S.form.unused + ' unused night(s)', status: 'unconfirmed' }, stamp()));
+  }
   if (!s.caution && ded > 0) b.set(db.collection('payments').doc(), Object.assign({ stayId: s.id, roomNo: s.roomNo, guestName: s.guestName, amount: ded, kind: 'damage', method: 'transfer', ref: '', status: 'unconfirmed' }, stamp()));
   b.update(db.collection('stays').doc(s.id), upd);
   b.update(db.collection('rooms').doc(r.id), { status: 'dirty', currentStayId: null });
@@ -402,11 +419,12 @@ VIEWS.stays = {
   actions: VIEWS.board.actions,
   render: function () {
     var tab = curTab('stays', 'inhouse'), q = (S.params.q || '').toLowerCase();
+    if (tab === 'calendar') return staysTabs() + stayCalendar();
     var list = S.data.stays.filter(function (s) { return tab === 'inhouse' ? s.status === 'checked_in' : tab === 'upcoming' ? s.status === 'reserved' : tab === 'past' ? s.status === 'checked_out' : ['cancelled', 'no_show'].indexOf(s.status) >= 0; });
     if (q) list = list.filter(function (s) { return (s.guestName + ' ' + s.phone + ' ' + s.roomNo).toLowerCase().indexOf(q) >= 0; });
     if (tab === 'upcoming') list = sortBy(list, function (s) { return s.checkInDate; });
     if (tab === 'inhouse') list = sortBy(list, function (s) { return s.checkOutDate; });
-    var html = tabs('stays', [['inhouse', 'In house (' + staysByStatus('checked_in').length + ')'], ['upcoming', 'Reservations (' + staysByStatus('reserved').length + ')'], ['past', 'Checked out'], ['other', 'Cancelled / no-show']]) +
+    var html = staysTabs() +
       '<div class="row"><input class="search" id="stay-q" type="search" placeholder="Search name, phone or room" value="' + esc(S.params.q || '') + '" oninput="S.params.q=this.value;render()"></div>';
     if (!list.length) return html + '<div class="card empty">Nothing here.</div>';
     return html + '<div class="table-wrap"><table><thead><tr><th>Guest</th><th>Room</th><th>Dates</th><th>Nights</th><th class="right">Total</th><th>Status</th></tr></thead><tbody>' +
@@ -423,7 +441,7 @@ var PAY_KIND = { room: 'Room', extension: 'Extension', balance: 'Balance', cauti
 function paymentRow(p) {
   var ps = PAY_STATUS[p.status] || ['', ''];
   var acts = '';
-  if (isAdmin() && p.status === 'unconfirmed') acts = '<button class="btn small primary" type="button" onclick="event.stopPropagation();decidePayment(\'' + p.id + '\',\'confirmed\')">Seen in bank</button><button class="btn small danger" type="button" onclick="event.stopPropagation();decidePayment(\'' + p.id + '\',\'rejected\')">Not received</button>';
+  if (isAdmin() && p.status === 'unconfirmed') acts = '<button class="btn small primary" type="button" onclick="event.stopPropagation();decidePayment(\'' + p.id + '\',\'confirmed\')">' + (p.amount < 0 ? 'Approve refund' : 'Seen in bank') + '</button><button class="btn small danger" type="button" onclick="event.stopPropagation();decidePayment(\'' + p.id + '\',\'rejected\')">' + (p.amount < 0 ? 'Reject' : 'Not received') + '</button>';
   if (isAdmin() && p.status !== 'void' && p.status !== 'unconfirmed') acts = '<button class="btn small" type="button" onclick="event.stopPropagation();voidPayment(\'' + p.id + '\')">Void</button>';
   return '<div class="list-row"><span class="main-t"><strong>' + money(p.amount) + ' · ' + esc(PAY_KIND[p.kind] || p.kind) + ' · Room ' + esc(p.roomNo) + '</strong><span>' + esc(PAY_METHODS[p.method] || p.method || '') + (p.sender ? ' · ' + esc(p.sender) : '') + (p.ref ? ' · ref ' + esc(p.ref) : '') + ' · ' + esc(p.byName || '') + ', ' + fmtDT(p.at) + '</span>' + (p.photos && p.photos.length ? '<span class="thumbs" style="margin-top:6px">' + thumbs(p.photos) + '</span>' : '') + '</span><span class="row">' + pill(ps[0], ps[1]) + acts + '</span></div>';
 }
@@ -486,4 +504,92 @@ function saveUnexpectedUse(roomId) {
   b.update(db.collection('rooms').doc(roomId), { status: 'dirty' });
   b.commit().catch(fail); createTurnoverTask(r, null, 'Found used with no guest');
   audit('unexpected_use', 'room', roomId, val('uu-note')); closeModal(); toast('Reported. The owner will see it.');
+}
+
+/* ---------- Edit stay details ---------- */
+function openEditStay(id) {
+  var s = byId(S.data.stays, id); S.form = { stayId: id };
+  var res = s.status === 'reserved';
+  var b = '<form class="form" onsubmit="event.preventDefault();saveEditStay()"><div class="fields">' +
+    field('Guest name', input('es-name', s.guestName, 'required')) + field('Phone', input('es-phone', s.phone, 'type="tel"')) +
+    field('ID type', '<select id="es-idtype">' + opts(ID_TYPES, s.idType) + '</select>') + field('ID number', input('es-idno', s.idNumber, '')) +
+    (res ? field('Arrival date', input('es-date', s.checkInDate, 'type="date"')) + field('Nights', input('es-nights', s.nights, 'type="number" min="1"')) + field('Expected arrival time', input('es-time', s.arrivalTime, 'type="time"')) : field('Key card number', input('es-card', s.cardNo, ''))) +
+    field('Note', '<textarea id="es-note">' + esc(s.notes || '') + '</textarea>', 'full') +
+    '</div>' + (res ? '' : '<div class="muted small">To add nights use Extend stay. To leave early use Check out, which works out unused nights.</div>') +
+    '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Save changes</button></div></form>';
+  openModal('Edit · ' + s.guestName, b);
+}
+function saveEditStay() {
+  var s = byId(S.data.stays, S.form.stayId), d = { guestName: val('es-name'), phone: val('es-phone'), idType: val('es-idtype'), idNumber: val('es-idno'), notes: val('es-note') };
+  if (s.status === 'reserved') {
+    var from = val('es-date'), n = Math.max(1, num(val('es-nights'))), to = addDays(from, n), clash = overlaps(s.roomId, from, to, s.id);
+    if (clash) return toast('Room ' + s.roomNo + ' is taken by ' + clash.guestName + ' then', true);
+    Object.assign(d, { checkInDate: from, checkOutDate: to, nights: n, arrivalTime: val('es-time') });
+  } else d.cardNo = val('es-card');
+  var changed = Object.keys(d).filter(function (k) { return String(d[k] == null ? '' : d[k]) !== String(s[k] == null ? '' : s[k]); });
+  if (!changed.length) return closeModal();
+  db.collection('stays').doc(s.id).update(d).catch(fail);
+  audit('stay_edited', 'stay', s.id, changed.map(function (k) { return k + ': ' + (s[k] || '—') + ' → ' + d[k]; }).join('; '));
+  closeModal(); toast('Saved');
+}
+
+/* ---------- Move a guest (or a reservation) to another room ---------- */
+function openMoveRoom(id) {
+  var s = byId(S.data.stays, id), inHouse = s.status === 'checked_in';
+  var options = roomsSorted().filter(function (r) { return r.id !== s.roomId && r.status !== 'ooo' && (inHouse ? r.status === 'ready' && !overlaps(r.id, todayStr(), s.checkOutDate, s.id) : !overlaps(r.id, s.checkInDate, s.checkOutDate, s.id)); });
+  if (!options.length) return toast(inHouse ? 'No other room is Ready and free until ' + fmtDate(s.checkOutDate) : 'No other room is free for those dates', true);
+  var b = '<form class="form" onsubmit="event.preventDefault();saveMoveRoom(\'' + id + '\')"><div class="fields">' +
+    info('From', 'Room ' + s.roomNo + ' · ' + (s.roomTypeName || '')) +
+    field('To', '<select id="mv-room">' + options.map(function (r) { return '<option value="' + r.id + '">Room ' + esc(r.number) + ' · ' + esc(roomType(r).name) + ' · ' + money(roomType(r).rate) + '/night</option>'; }).join('') + '</select>') +
+    field('Reason', input('mv-why', '', 'required placeholder="e.g. AC fault, guest request"'), 'full') +
+    (inHouse ? field('New key card number', input('mv-card', s.cardNo, '')) : '') +
+    '</div><div class="note">' + (inHouse ? 'The guest keeps their booked rate (' + money(s.rate) + '/night). Room ' + esc(s.roomNo) + ' goes to cleaning.' : 'Only the reservation changes.') + '</div>' +
+    '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Move</button></div></form>';
+  openModal('Move ' + s.guestName, b);
+}
+function saveMoveRoom(id) {
+  var s = byId(S.data.stays, id), to = byId(S.data.rooms, val('mv-room')), from = byId(S.data.rooms, s.roomId), why = val('mv-why');
+  if (!why) return toast('Give a reason', true);
+  var b = db.batch(), now = Date.now(), entry = { from: s.roomNo, to: to.number, reason: why, at: now, by: S.user.uid, byName: meName() };
+  var upd = { roomId: to.id, roomNo: to.number, roomTypeName: roomType(to).name, roomMoves: FV.arrayUnion(entry) };
+  if (s.status === 'checked_in') {
+    if (to.status !== 'ready') return toast('Room ' + to.number + ' is no longer Ready', true);
+    upd.cardNo = val('mv-card') || s.cardNo;
+    b.update(db.collection('rooms').doc(from.id), { status: 'dirty', currentStayId: null });
+    b.update(db.collection('rooms').doc(to.id), { status: 'occupied', currentStayId: s.id });
+  }
+  b.update(db.collection('stays').doc(id), upd);
+  b.commit().catch(fail);
+  if (s.status === 'checked_in') createTurnoverTask(from, s, 'Guest moved to Room ' + to.number + ': ' + why);
+  audit('room_move', 'stay', id, s.guestName + ': Room ' + s.roomNo + ' → ' + to.number + ' · ' + why);
+  closeModal(); toast(s.guestName + ' moved to Room ' + to.number);
+}
+
+/* ---------- Stays tabs + reservations calendar ---------- */
+function staysTabs() {
+  return tabs('stays', [['inhouse', 'In house (' + staysByStatus('checked_in').length + ')'], ['upcoming', 'Reservations (' + staysByStatus('reserved').length + ')'], ['calendar', 'Calendar'], ['past', 'Checked out'], ['other', 'Cancelled / no-show']]);
+}
+// Rooms down the side, nights across the top. A stay fills the nights from check-in up to (not including) check-out.
+function stayCalendar() {
+  var start = S.params.calStart || todayStr(), days = 21, dates = [];
+  for (var i = 0; i < days; i++) dates.push(addDays(start, i));
+  var end = addDays(start, days), stays = S.data.stays.filter(function (s) { return (s.status === 'reserved' || s.status === 'checked_in') && s.checkInDate < end && s.checkOutDate > start; });
+  var html = '<div class="row between"><div class="row"><button class="btn small" type="button" onclick="S.params.calStart=addDays(\'' + start + '\',-7);render()">← Week</button><button class="btn small" type="button" onclick="S.params.calStart=null;render()">Today</button><button class="btn small" type="button" onclick="S.params.calStart=addDays(\'' + start + '\',7);render()">Week →</button></div>' +
+    '<div class="b3d-legend"><span><i style="background:#3A73D9"></i>In house</span><span><i style="background:#8B6BD6"></i>Reserved</span><span>Tap an empty night to reserve</span></div></div>';
+  html += '<div class="table-wrap cal-wrap"><table class="cal"><thead><tr><th class="cal-room">Room</th>' + dates.map(function (d) { var dt = parseDate(d), we = dt.getDay() === 0 || dt.getDay() === 6; return '<th class="' + (d === todayStr() ? 'cal-today' : we ? 'cal-we' : '') + '">' + DOW[dt.getDay()].slice(0, 2) + '<br>' + dt.getDate() + '</th>'; }).join('') + '</tr></thead><tbody>';
+  roomsSorted().forEach(function (r) {
+    html += '<tr><th class="cal-room">' + esc(r.number) + '</th>';
+    for (var i = 0; i < days; i++) {
+      var d = dates[i], s = stays.find(function (x) { return x.roomId === r.id && x.checkInDate <= d && x.checkOutDate > d; });
+      if (s) {
+        var span = 1; while (i + span < days && dates[i + span] < s.checkOutDate) span++;
+        var cls = s.status === 'checked_in' ? 'cal-in' : 'cal-res';
+        html += '<td colspan="' + span + '" class="cal-stay ' + cls + '"><button type="button" onclick="openStay(\'' + s.id + '\')" title="' + esc(s.guestName + ' · ' + fmtDate(s.checkInDate) + ' → ' + fmtDate(s.checkOutDate)) + '">' + esc(s.guestName.split(' ')[0]) + '</button></td>';
+        i += span - 1;
+      } else if (r.status === 'ooo' && d === todayStr()) html += '<td class="cal-ooo" title="Out of order">×</td>';
+      else html += '<td class="cal-free"><button type="button" aria-label="Reserve room ' + esc(r.number) + ' from ' + fmtDate(d) + '" onclick="openReservation(\'' + r.id + '\',\'' + d + '\')"></button></td>';
+    }
+    html += '</tr>';
+  });
+  return html + '</tbody></table></div>';
 }
