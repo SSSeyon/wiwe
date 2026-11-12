@@ -134,8 +134,8 @@ function openCheckIn(roomId, reservationId) {
     field('Full name', input('ci-name', rv ? rv.guestName : '', 'required autocomplete="off"')) +
     field('Phone number', input('ci-phone', rv ? rv.phone : '', 'required type="tel" onblur="guestLookup()"')) +
     field('ID type', '<select id="ci-idtype">' + opts(ID_TYPES, rv && rv.idType) + '</select>') +
-    field('ID number', input('ci-idno', rv ? rv.idNumber : '', '')) +
-    photoField('idPhotos', 'Photo of ID') +
+    field('ID number (optional)', input('ci-idno', rv ? rv.idNumber : '', '')) +
+    photoField('idPhotos', 'Photo of ID (optional)') +
     '<div class="full" id="ci-lookup" style="grid-column:1/-1"></div></div></fieldset>' +
     '<fieldset class="group"><legend>2 · Stay</legend><div class="fields">' +
     field('Room', '<select id="ci-room" onchange="ciCalc()">' + free.map(function (r) { return '<option value="' + r.id + '"' + (r.id === room.id ? ' selected' : '') + '>' + esc(r.number + ' · ' + roomType(r).name) + '</option>'; }).join('') + '</select>') +
@@ -188,7 +188,6 @@ async function saveCheckIn() {
   if (!r) return toast('Pick a room', true);
   if (r.status !== 'ready') return toast('Room ' + r.number + ' is not Ready', true);
   var method = radio('ci-method'), amount = num(val('ci-amount')), ref = val('ci-ref');
-  if (!S.form.idPhotos.length && !val('ci-idno')) return toast('Add the ID number or a photo of the ID', true);
   if (method !== 'cash' && !ref) return toast('Enter the transfer or POS reference', true);
   var disc = num(val('ci-disc')), discR = val('ci-discr');
   if (disc > 0 && !discR) return toast('Give a reason for the discount', true);

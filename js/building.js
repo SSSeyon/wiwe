@@ -22,6 +22,15 @@ function roomWhere(room) { var p = bpPlace(room); return floorName(p.floor) + (B
 function bpCol(r) { return BP_COLORS[displayStatus(r)] || BP_COLORS.ready; }
 function bpTxt(x, y, s, size, fill, weight, anchor, extra) { return '<text x="' + x + '" y="' + y + '" font-size="' + size + '" fill="' + fill + '" font-weight="' + (weight || 600) + '" text-anchor="' + (anchor || 'middle') + '" font-family="Space Grotesk, Inter, sans-serif"' + (extra || '') + '>' + esc(s) + '</text>'; }
 
+// Small cooking-pot icon; crossed out when the room has no kitchen
+function bpKitchen(x, y, s, col, has) {
+  var g = '<g aria-hidden="true" fill="none" stroke="' + col + '" stroke-width="' + (s > 9 ? 1.3 : 1.1) + '" stroke-linecap="round">' +
+    '<path d="M' + (x + 1) + ' ' + (y + s * 0.42) + 'h' + (s - 2) + 'v' + (s * 0.42) + 'a1.5 1.5 0 0 1-1.5 1.5h' + (-(s - 5)) + 'a1.5 1.5 0 0 1-1.5-1.5z"/>' +
+    '<path d="M' + x + ' ' + (y + s * 0.42) + 'h' + s + 'M' + (x + s * 0.5) + ' ' + (y + s * 0.42) + 'v' + (-s * 0.18) + '"/>' +
+    '<path d="M' + (x + s * 0.3) + ' ' + (y + s * 0.12) + 'q1-1 0-2M' + (x + s * 0.7) + ' ' + (y + s * 0.12) + 'q1-1 0-2"/>';
+  if (!has) g += '<path d="M' + (x - 1) + ' ' + (y - 1) + 'L' + (x + s + 1) + ' ' + (y + s + 1) + 'M' + (x + s + 1) + ' ' + (y - 1) + 'L' + (x - 1) + ' ' + (y + s + 1) + '" stroke-width="' + (s > 9 ? 1.6 : 1.3) + '"/>';
+  return g + '</g>';
+}
 // One room tile. front = bigger, with a shadow and its status written under the number
 function bpTile(r, x, y, w, h, front) {
   if (!r) return '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="6" fill="#E9DDB4" stroke="#CDBB84" stroke-width="1.5" stroke-dasharray="4 3"/>';
@@ -32,7 +41,9 @@ function bpTile(r, x, y, w, h, front) {
     '<title>Room ' + esc(r.number) + ' · ' + esc(ROOM_STATUS[st].label) + (stay && st === 'occupied' ? ' · ' + esc(stay.guestName) : '') + '</title>';
   if (front) s += '<rect x="' + (x + 2) + '" y="' + (y + 2) + '" width="' + w + '" height="' + h + '" rx="5" fill="rgba(22,22,22,.22)"/>';
   s += '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + (front ? 5 : 4) + '" fill="' + c[2] + '" stroke="' + (front ? '#FFFFFF' : 'rgba(22,22,22,.45)') + '" stroke-width="' + (front ? 2 : 1.2) + '"/>';
-  s += bpTxt(x + w / 2, y + h / 2 + (front ? 5 : 4), r.number, front ? 14 : 11, c[3], 700);
+  var kit = !!roomType(r).hasKitchen, isz = front ? 10 : 8;
+  s += bpKitchen(x + (front ? 6 : 5), y + (h - isz) / 2, isz, c[3], kit);
+  s += bpTxt(x + w / 2 + isz / 2 + 1, y + h / 2 + (front ? 5 : 4), r.number, front ? 14 : 11, c[3], 700);
   if (attn) s += '<circle cx="' + (x + w - 5) + '" cy="' + (y + 5) + '" r="5" fill="#A12626" stroke="#FFFFFF" stroke-width="1.2"/>' + bpTxt(x + w - 5, y + 8, '!', 8, '#FFFFFF', 700);
   if (focus) s += '<rect class="bp-focus" x="' + (x - 3) + '" y="' + (y - 3) + '" width="' + (w + 6) + '" height="' + (h + 6) + '" rx="7" fill="none" stroke="' + BP_FOCUS + '" stroke-width="3"/>';
   return s + '</g>';
@@ -73,7 +84,7 @@ function buildingHtml() {
   var legend = [['ready', 'Ready'], ['occupied', 'Occupied'], ['reserved', 'Reserved today'], ['dirty', 'Dirty'], ['cleaning', 'Cleaning / inspection'], ['ooo', 'Out of order']];
   var fr = BP.focus && byId(S.data.rooms, BP.focus);
   return '<div class="bp-wrap">' +
-    '<div class="row between"><div class="b3d-legend" aria-label="Colour key">' + legend.map(function (l) { return '<span><i style="background:' + BP_COLORS[l[0]][2] + '"></i>' + l[1] + '</span>'; }).join('') + '<span><i style="background:#A12626;border-radius:999px"></i>Needs attention</span></div>' +
+    '<div class="row between"><div class="b3d-legend" aria-label="Colour key">' + legend.map(function (l) { return '<span><i style="background:' + BP_COLORS[l[0]][2] + '"></i>' + l[1] + '</span>'; }).join('') + '<span><i style="background:#A12626;border-radius:999px"></i>Needs attention</span><span><svg width="14" height="14" viewBox="-1 -1 12 12" aria-hidden="true">' + bpKitchen(0, 0, 10, '#161616', true) + '</svg>Kitchen</span><span><svg width="14" height="14" viewBox="-2 -2 14 14" aria-hidden="true">' + bpKitchen(0, 0, 10, '#161616', false) + '</svg>No kitchen</span></div>' +
     '<label class="sr-only" for="bp-find">Find a room</label><select id="bp-find" class="search bp-find" onchange="bpFocus(this.value)"><option value="">Find a room…</option>' +
     roomsSorted().map(function (r) { return '<option value="' + r.id + '"' + (BP.focus === r.id ? ' selected' : '') + '>Room ' + esc(r.number) + ' · ' + esc(floorName(roomFloor(r))) + '</option>'; }).join('') + '</select></div>' +
     (fr ? '<div class="note"><strong>Room ' + esc(fr.number) + '</strong>: ' + esc(roomWhere(fr)) + '. ' + pill(ROOM_STATUS[displayStatus(fr)].label, ROOM_STATUS[displayStatus(fr)].cls) + ' <button class="btn small" type="button" onclick="openRoom(\'' + fr.id + '\')">Open room</button> <button class="btn small" type="button" onclick="bpFocus(\'\')">Clear</button></div>' : '') +

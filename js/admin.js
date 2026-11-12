@@ -232,11 +232,13 @@ function adminStaff() {
   var past = sortBy(S.data.users.filter(function (u) { return u.active === false; }), function (u) { return -(u.endedAt || 0); });
   return '<div class="card"><div class="card-head"><h2>Staff accounts</h2><button class="btn primary small" type="button" onclick="openStaff()">+ Add account</button></div>' +
     active.map(function (u) {
-      var self = u.id === S.user.uid;
+      var self = u.id === S.user.uid, waiting = u.onboarded === false;
       return '<div class="list-row"><span class="main-t"><strong>' + esc(u.name) + ' · @' + esc(u.username) + '</strong><span>' + esc((u.roles || []).map(function (r) { return ROLES[r]; }).join(', ')) + (u.handoverAt ? ' · holder since ' + fmtDate(u.handoverAt) : '') + '</span></span>' +
-        '<span class="row"><button class="btn small" type="button" onclick="openStaff(\'' + u.id + '\')">Edit</button>' + (self ? '' : '<button class="btn small" type="button" onclick="openHandover(\'' + u.id + '\')">Hand over / reset password</button>') + '</span></div>';
+        '<span class="row">' + (waiting ? pill('Not onboarded yet', 'st-alert') : '') +
+        '<button class="btn small" type="button" onclick="openStaff(\'' + u.id + '\')">Edit</button>' +
+        (waiting ? '<button class="btn small primary" type="button" onclick="openOnboard(\'' + u.id + '\')">Onboard</button>' : self ? '' : '<button class="btn small" type="button" onclick="openHandover(\'' + u.id + '\')">Reset password / hand over</button>') + '</span></div>';
     }).join('') + '</div>' +
-    '<div class="note">Staff sign in with a username and password. When someone leaves a role, use <strong>Hand over</strong>: the next person takes the same username with a new password, the old password stops working at once, and everything the previous person did stays recorded under their name. Use the same button with the same name if someone forgets their password.</div>' +
+    '<div class="note">Create the account, then press <strong>Onboard</strong> and send the person their link. They open it on their phone and choose their own password. If someone forgets their password, or leaves and is replaced, use <strong>Reset password / hand over</strong>: it makes a new link, and the old password stops working at once. Everything the previous person did stays recorded under their name.</div>' +
     (past.length ? '<div class="card"><h2>Previous holders and disabled accounts</h2>' + past.map(function (u) {
       var next = byId(S.data.users, u.handedOverTo);
       return '<div class="list-row"><span class="main-t"><strong>' + esc(u.name) + ' · @' + esc(u.username) + '</strong><span>' + (u.endedReason === 'handover' ? 'Handed over' + (next ? ' to ' + esc(next.name) : '') : u.endedReason === 'password_reset' ? 'Password reset' : 'Disabled') + (u.endedAt ? ' · ' + fmtDate(u.endedAt) : '') + '</span></span>' + pill('Inactive', 'st-ooo') + '</div>';
@@ -244,17 +246,18 @@ function adminStaff() {
 }
 function roleChoices(roles, lockAdmin) {
   return '<fieldset class="group"><legend>Roles</legend><div class="choices">' + Object.keys(ROLES).map(function (r) { return '<label class="choice"><input type="checkbox" name="sf-role" value="' + r + '"' + ((roles || []).indexOf(r) >= 0 ? ' checked' : '') + (lockAdmin && r === 'admin' ? ' disabled' : '') + '>' + ROLES[r] + '</label>'; }).join('') + '</div>' +
-    '<div class="muted small">Admin: everything · Manager: all operations, store, reports, verifies repairs · Front desk: check-in/out, stays, expenses · Housekeeping: cleaning tasks · Maintenance: repairs and assets</div></fieldset>';
+    '<div class="muted small">Admin: everything · Manager: all operations, store, reports, verifies repairs · Front desk: check-in/out, stays, sales, expenses · Housekeeping: cleaning tasks and laundry · Maintenance: repairs and assets</div></fieldset>';
 }
 function checkedRoles() { return Array.prototype.slice.call(document.querySelectorAll('input[name="sf-role"]:checked')).map(function (i) { return i.value; }); }
 function openStaff(id) {
   var u = byId(S.data.users, id) || { roles: [] }, self = id === S.user.uid;
   var b = '<form class="form" onsubmit="event.preventDefault();saveStaff(\'' + (id || '') + '\')"><div class="fields">' +
     field(id ? 'Name of current holder' : 'Full name', input('sf-name', u.name, 'required')) +
-    (id ? info('Username', '@' + u.username) : field('Username', input('sf-user', '', 'required autocapitalize="none"'), '', 'Tip: name it after the role, e.g. frontdesk1, cleaner1, so it can be handed over') + field('Password', input('sf-pin', '', 'required minlength="6" type="text" autocomplete="off"'), '', 'At least 6 characters. Tell them in person.')) +
+    field('Username', input('sf-user', u.username, 'required autocapitalize="none"'), '', id ? 'Fix a typo here. They sign in with the new username from now on.' : 'Tip: name it after the role, e.g. frontdesk1, cleaner1, so it can be handed over') +
     field('Phone', input('sf-phone', u.phone, 'type="tel"')) + '</div>' + roleChoices(u.roles, self) +
     (id && !self ? '<label class="check"><input type="checkbox" id="sf-active" checked>Account active (untick to block sign-in without handing over)</label>' : '') +
-    '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary" id="sf-save">Save</button></div></form>';
+    (id ? '' : '<div class="note">No password needed. After saving you get an onboarding link to send them, and they choose their own password.</div>') +
+    '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary" id="sf-save">' + (id ? 'Save' : 'Create account') + '</button></div></form>';
   openModal(id ? '@' + u.username : 'Add account', b);
 }
 // A second Firebase app creates logins without signing the owner out
@@ -264,57 +267,96 @@ async function createLogin(password) {
   var uid = cred.user.uid; await sec.auth().signOut();
   return { uid: uid, email: email };
 }
+function randomCode(n) { var a = 'abcdefghjkmnpqrstuvwxyz23456789', s = '', r = crypto.getRandomValues(new Uint32Array(n)); for (var i = 0; i < n; i++) s += a[r[i] % a.length]; return s; }
+var INVITE_DAYS = 3;
+// New hidden login with a throw-away password, plus a one-time onboarding link for it
+function inviteBatch(b, uid, email, temp, username, name) {
+  var code = randomCode(12);
+  b.set(db.collection('invites').doc(code), { uid: uid, email: email, temp: temp, username: username, name: name, expires: Date.now() + INVITE_DAYS * 86400000, createdBy: S.user.uid, createdAt: Date.now() });
+  return code;
+}
 async function saveStaff(id) {
   var roles = checkedRoles();
   if (id === S.user.uid && roles.indexOf('admin') < 0) roles.push('admin');
   if (!roles.length) return toast('Pick at least one role', true);
+  var user = cleanUsername(val('sf-user'));
+  if (!user) return toast('Choose a username (letters and numbers)', true);
   $('sf-save').disabled = true;
   try {
     if (id) {
-      var d = { name: val('sf-name'), phone: val('sf-phone'), roles: roles };
+      var u = byId(S.data.users, id), b = db.batch(), d = { name: val('sf-name'), phone: val('sf-phone'), roles: roles };
       if ($('sf-active') && !val('sf-active')) { d.active = false; d.endedReason = 'disabled'; d.endedAt = Date.now(); }
-      await db.collection('users').doc(id).update(d); audit('staff_updated', 'user', id, d.name + ' · ' + roles.join(',') + (d.active === false ? ' · disabled' : ''));
-    } else {
-      var user = cleanUsername(val('sf-user')), pin = val('sf-pin');
-      if (!user) throw new Error('Choose a username (letters and numbers)');
-      if (!validPassword(pin)) throw new Error('Password must be at least 6 characters');
-      if ((await db.collection('usernames').doc(user).get()).exists) throw new Error('That username is already taken');
-      var login = await createLogin(pin), now = Date.now(), b = db.batch();
-      b.set(db.collection('users').doc(login.uid), { name: val('sf-name'), username: user, phone: val('sf-phone'), roles: roles, active: true, createdAt: now, createdBy: S.user.uid });
-      b.set(db.collection('usernames').doc(user), { uid: login.uid, email: login.email, at: now });
+      if (user !== u.username) {
+        if ((await db.collection('usernames').doc(user).get()).exists) throw new Error('That username is already taken');
+        var old = await db.collection('usernames').doc(u.username).get();
+        b.set(db.collection('usernames').doc(user), Object.assign({}, old.exists ? old.data() : { uid: id }, { at: Date.now() }));
+        if (old.exists && old.data().uid === id) b.delete(db.collection('usernames').doc(u.username));
+        if (u.inviteCode) b.update(db.collection('invites').doc(u.inviteCode), { username: user });
+        d.username = user;
+      }
+      b.update(db.collection('users').doc(id), d);
       await b.commit();
+      audit('staff_updated', 'user', id, d.name + ' · ' + roles.join(',') + (d.username ? ' · username @' + u.username + ' → @' + user : '') + (d.active === false ? ' · disabled' : ''));
+      closeModal(); toast(d.username ? 'Saved. New username: @' + user : 'Saved');
+    } else {
+      if ((await db.collection('usernames').doc(user).get()).exists) throw new Error('That username is already taken');
+      var temp = randomCode(24), login = await createLogin(temp), now = Date.now(), b2 = db.batch();
+      var code = inviteBatch(b2, login.uid, login.email, temp, user, val('sf-name'));
+      b2.set(db.collection('users').doc(login.uid), { name: val('sf-name'), username: user, phone: val('sf-phone'), roles: roles, active: true, onboarded: false, inviteCode: code, createdAt: now, createdBy: S.user.uid });
+      b2.set(db.collection('usernames').doc(user), { uid: login.uid, email: login.email, at: now });
+      await b2.commit();
       audit('staff_added', 'user', login.uid, '@' + user + ' · ' + val('sf-name') + ' · ' + roles.join(','));
+      closeModal(); setTimeout(function () { openOnboard(login.uid); }, 300);
     }
-    closeModal(); toast('Saved');
   } catch (e) { $('sf-save').disabled = false; fail(e); }
+}
+function onboardLink(code) { return location.origin + location.pathname + '#onboard=' + code; }
+async function openOnboard(uid) {
+  var u = byId(S.data.users, uid); if (!u) return;
+  var inv = u.inviteCode ? await db.collection('invites').doc(u.inviteCode).get().catch(function () { return null; }) : null;
+  if (!inv || !inv.exists) return openModal('Onboard ' + u.name, '<div class="note warn">This onboarding link has been used or removed. Use "Reset password / hand over" to make a new one.</div>');
+  var d = inv.data();
+  if (d.expires < Date.now()) {
+    var b = db.batch(), code = inviteBatch(b, d.uid, d.email, d.temp, u.username, u.name);
+    b.delete(inv.ref); b.update(db.collection('users').doc(uid), { inviteCode: code });
+    await b.commit(); u = Object.assign({}, u, { inviteCode: code }); d.expires = Date.now() + INVITE_DAYS * 86400000;
+  }
+  var link = onboardLink(u.inviteCode), msg = 'Hello ' + u.name.split(' ')[0] + ', here is your Wiwe Apartments staff login. Your username is ' + u.username + '. Open this link to choose your password (it works once, within ' + INVITE_DAYS + ' days): ' + link;
+  var body = '<div class="note">Send this link to <strong>' + esc(u.name) + '</strong>. They open it, choose a password, and they\'re in. It works once and expires ' + fmtDT(d.expires) + '.</div>' +
+    '<div class="fields">' + info('Username', '@' + u.username) + '<div class="field full">Onboarding link<input readonly value="' + esc(link) + '" onclick="this.select()"></div></div>' +
+    '<div class="row"><a class="btn primary" target="_blank" rel="noopener" href="https://wa.me/' + esc(String(u.phone || '').replace(/\D/g, '').replace(/^0/, '234')) + '?text=' + encodeURIComponent(msg) + '">Send on WhatsApp</a>' +
+    '<button class="btn" type="button" onclick="navigator.clipboard.writeText(' + esc(JSON.stringify(link)).replace(/"/g, '&quot;') + ').then(function(){toast(\'Link copied\')})">Copy link</button></div>';
+  openModal('Onboard ' + u.name, body);
 }
 function openHandover(id) {
   var u = byId(S.data.users, id);
   var b = '<form class="form" onsubmit="event.preventDefault();saveHandover(\'' + id + '\')">' +
     '<div class="note">Account <strong>@' + esc(u.username) + '</strong> · ' + esc((u.roles || []).map(function (r) { return ROLES[r]; }).join(', ')) + ' · held by ' + esc(u.name) + '</div>' +
     '<div class="choices" role="radiogroup" aria-label="What is happening?">' +
-    '<label class="choice"><input type="radio" name="ho-kind" value="handover" checked onchange="$(\'ho-name\').value=\'\'">A new person is taking over</label>' +
-    '<label class="choice"><input type="radio" name="ho-kind" value="password_reset" onchange="$(\'ho-name\').value=' + esc(JSON.stringify(u.name)).replace(/"/g, '&quot;') + '">Same person, new password</label></div>' +
-    '<div class="fields">' + field("Holder's name", input('ho-name', '', 'required')) + field('Phone', input('ho-phone', '', 'type="tel"')) +
-    field('New password', input('ho-pin', '', 'required minlength="6" type="text" autocomplete="off"'), '', 'At least 6 characters. The old password stops working immediately.') + '</div>' +
-    '<div class="muted small">Same username and roles. Everything ' + esc(u.name) + ' did stays recorded under their name.</div>' +
-    '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary" id="ho-save">Confirm</button></div></form>';
-  openModal('Hand over @' + u.username, b);
+    '<label class="choice"><input type="radio" name="ho-kind" value="password_reset" checked onchange="$(\'ho-who\').classList.add(\'hidden\')">Same person forgot their password</label>' +
+    '<label class="choice"><input type="radio" name="ho-kind" value="handover" onchange="$(\'ho-who\').classList.remove(\'hidden\')">A new person is taking over</label></div>' +
+    '<div class="fields hidden" id="ho-who">' + field("New holder's name", input('ho-name', '', '')) + field('Phone', input('ho-phone', '', 'type="tel"')) + '</div>' +
+    '<div class="muted small">The current password stops working immediately. You get a new onboarding link for them to choose a password. Same username and roles.</div>' +
+    '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary" id="ho-save">Make new link</button></div></form>';
+  openModal('Reset password / hand over · @' + u.username, b);
 }
 async function saveHandover(id) {
-  var old = byId(S.data.users, id), kind = radio('ho-kind'), pin = val('ho-pin');
-  if (!validPassword(pin)) return toast('Password must be at least 6 characters', true);
+  var old = byId(S.data.users, id), kind = radio('ho-kind'), name = kind === 'handover' ? val('ho-name') : old.name;
+  if (!name) return toast("Enter the new holder's name", true);
   $('ho-save').disabled = true;
   try {
-    var login = await createLogin(pin), now = Date.now(), b = db.batch();
-    b.set(db.collection('users').doc(login.uid), { name: val('ho-name'), username: old.username, phone: val('ho-phone') || (kind === 'password_reset' ? old.phone || '' : ''), roles: old.roles || [], active: true, createdAt: now, createdBy: S.user.uid, previousUid: id, handoverAt: kind === 'handover' ? now : (old.handoverAt || old.createdAt || now) });
+    var temp = randomCode(24), login = await createLogin(temp), now = Date.now(), b = db.batch();
+    var code = inviteBatch(b, login.uid, login.email, temp, old.username, name);
+    b.set(db.collection('users').doc(login.uid), { name: name, username: old.username, phone: kind === 'handover' ? val('ho-phone') : (old.phone || ''), roles: old.roles || [], active: true, onboarded: false, inviteCode: code, createdAt: now, createdBy: S.user.uid, previousUid: id, handoverAt: kind === 'handover' ? now : (old.handoverAt || old.createdAt || now) });
     b.update(db.collection('users').doc(id), { active: false, endedReason: kind, endedAt: now, handedOverTo: login.uid });
     b.set(db.collection('usernames').doc(old.username), { uid: login.uid, email: login.email, at: now });
+    if (old.inviteCode) b.delete(db.collection('invites').doc(old.inviteCode));
     await b.commit();
-    audit(kind === 'handover' ? 'account_handover' : 'password_reset', 'user', login.uid, '@' + old.username + (kind === 'handover' ? ' from ' + old.name + ' to ' + val('ho-name') : ' · ' + old.name));
-    closeModal(); toast(kind === 'handover' ? '@' + old.username + ' now belongs to ' + val('ho-name') : 'Password reset for @' + old.username);
+    audit(kind === 'handover' ? 'account_handover' : 'password_reset', 'user', login.uid, '@' + old.username + (kind === 'handover' ? ' from ' + old.name + ' to ' + name : ' · ' + old.name));
+    closeModal(); setTimeout(function () { openOnboard(login.uid); }, 300);
   } catch (e) { $('ho-save').disabled = false; fail(e); }
 }
+
 function adminSecurity() {
   return '<div class="card"><h2>Change admin code</h2><form class="form" onsubmit="event.preventDefault();changeCode()"><div class="fields">' +
     field('Current admin code', input('cc-old', '', 'type="password" inputmode="numeric" required')) + field('New admin code (6 digits)', input('cc-new', '', 'type="password" inputmode="numeric" pattern="[0-9]{6}" required')) +

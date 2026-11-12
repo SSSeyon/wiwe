@@ -1,6 +1,6 @@
 # Wiwe Apartments: Operations app · Handover
 
-Version 1.8.0 · Vanilla HTML/CSS/JS PWA · GitHub Pages + Firebase (Auth + Firestore)
+Version 1.9.0 · Vanilla HTML/CSS/JS PWA · GitHub Pages + Firebase (Auth + Firestore)
 
 ## 1. Go-live checklist
 
@@ -218,3 +218,20 @@ Do this once, after publishing the rules:
    - change a rate. Try it in the browser console: `db.collection('roomTypes').doc('<id>').update({rate:1})` should fail with a permission error.
 4. Repeat with a **Housekeeping**-only account: it should see only Housekeeping and Maintenance, and must not be able to read payments or stays (try `db.collection('payments').get()` in the console).
 5. When you're done, disable the test accounts in Admin settings → Staff.
+
+## 14. v1.9.0
+
+- **ID is optional at check-in.** Both the ID number and the photo can be left empty.
+- **Staff onboarding.** The admin creates the account with name, username, phone and roles, and **no password**. The app then:
+  - creates a hidden login with a random throw-away password
+  - stores a one-time invite at `invites/{12-character code}` (`uid`, `email`, `temp`, `username`, `name`, `expires`, 3 days)
+  - shows the **Onboard** link (`…/#onboard=CODE`), with Send on WhatsApp and Copy buttons. The link is regenerated automatically if it has expired.
+- **When staff open the link:** they see their username and choose a password. The app signs in with the throw-away password, calls `updatePassword`, sets `users.onboarded = true` and deletes the invite. The link then stops working.
+- **Reset password / hand over** no longer asks the admin for a password. It makes a new login and a new onboarding link. The old login is deactivated and the history stays with the old person.
+- **Rename a username:** in Admin settings → Staff → Edit. The `usernames/{old}` entry moves to `usernames/{new}`.
+- **Kitchen icon** on every room tile: a pot means the room's type "Has a kitchen"; a crossed-out pot means it doesn't. It's in the colour key too.
+- **Rules:**
+  - `invites`: readable only with the code until it expires; admin creates; the invited user or the admin deletes
+  - a user may set only `onboarded`, `onboardedAt` and `inviteCode` on their own user record
+  - the admin can delete usernames (for renames)
+  - **Re-publish `firestore.rules`.**

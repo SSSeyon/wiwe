@@ -1,4 +1,4 @@
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.9.0';
 
 /* =========================================================
    Constants
@@ -471,9 +471,54 @@ async function changeMyPassword() {
 /* =========================================================
    Boot
    ========================================================= */
+/* ---------- Onboarding: staff open their link and choose a password ---------- */
+function onboardCodeFromUrl() { var m = (location.hash || '').match(/^#onboard=([a-z0-9]+)$/); return m ? m[1] : null; }
+async function showOnboard(code) {
+  $('boot').classList.add('hidden'); $('app').classList.add('hidden'); $('login').classList.remove('hidden');
+  var head = '<img class="login-photo" src="img/building.jpg" alt="Wiwe Apartments building"><img class="login-logo logo-img" src="img/logo.png" alt="Wiwe Apartments">';
+  var inv = null;
+  try { var d = await db.collection('invites').doc(code).get(); if (d.exists) inv = d.data(); } catch (e) {}
+  if (!inv || inv.expires < Date.now()) {
+    $('login').innerHTML = '<div class="login-card">' + head + '<h2>This link no longer works</h2><p class="muted">It has already been used or has expired. Ask the owner to send you a new one.</p><button class="btn block" type="button" onclick="leaveOnboard()">Go to sign in</button></div>';
+    return;
+  }
+  S.invite = Object.assign({ code: code }, inv);
+  $('login').innerHTML = '<div class="login-card">' + head +
+    '<h2>Welcome, ' + esc(String(inv.name || '').split(' ')[0]) + '</h2>' +
+    '<div class="note">Your username is <strong>' + esc(inv.username) + '</strong>. You\'ll use it to sign in.</div>' +
+    '<form class="form" onsubmit="event.preventDefault();finishOnboard()">' +
+    field('Choose a password', input('ob-pw', '', 'type="password" required minlength="6" autocomplete="new-password"'), '', 'At least 6 characters. Don\'t share it with anyone.') +
+    field('Type it again', input('ob-pw2', '', 'type="password" required minlength="6" autocomplete="new-password"')) +
+    '<button class="btn primary block" type="submit" id="ob-btn">Set password and sign in</button></form></div>';
+}
+async function finishOnboard() {
+  var pw = val('ob-pw'), inv = S.invite;
+  if (!validPassword(pw)) return toast('Password must be at least 6 characters', true);
+  if (pw !== val('ob-pw2')) return toast('The two passwords don\'t match', true);
+  $('ob-btn').disabled = true; $('ob-btn').textContent = 'Setting up…';
+  S.onboarding = true;
+  try {
+    if (auth.currentUser) await auth.signOut();
+    var cred = await auth.signInWithEmailAndPassword(inv.email, inv.temp);
+    await cred.user.updatePassword(pw);
+    await db.collection('users').doc(inv.uid).update({ onboarded: true, onboardedAt: Date.now(), inviteCode: FV.delete() });
+    await db.collection('invites').doc(inv.code).delete();
+    S.onboarding = false; S.invite = null;
+    try { history.replaceState(null, '', location.pathname); } catch (e) {}
+    location.reload();
+  } catch (e) {
+    S.onboarding = false; $('ob-btn').disabled = false; $('ob-btn').textContent = 'Set password and sign in';
+    toast('Could not finish setup. Ask the owner for a new link.', true); console.error(e);
+  }
+}
+function leaveOnboard() { try { history.replaceState(null, '', location.pathname); } catch (e) {} location.reload(); }
+
 function boot() {
   if (!CONFIGURED) return showLogin('config');
+  var obCode = onboardCodeFromUrl();
+  if (obCode) showOnboard(obCode);
   auth.onAuthStateChanged(async function (user) {
+    if (S.onboarding || onboardCodeFromUrl()) return;
     S.user = user;
     if (!user) { S.me = null; stopListeners(); return checkSetupOrLogin(); }
     var tries = 0, snap;

@@ -31,8 +31,17 @@ service cloud.firestore {
         || (signedIn() && request.auth.uid == uid
             && !exists(/databases/$(database)/documents/meta/setup)
             && existsAfter(/databases/$(database)/documents/meta/setup));
-      allow update: if admin();
+      allow update: if admin()
+        || (signedIn() && request.auth.uid == uid && onlyChanges(['onboarded', 'onboardedAt', 'inviteCode']));
       allow delete: if false;
+    }
+
+    // One-time onboarding links. Readable only by someone who has the (random) code, until it expires.
+    match /invites/{code} {
+      allow get: if admin() || resource.data.expires > request.time.toMillis();
+      allow list: if false;
+      allow create, update: if admin();
+      allow delete: if admin() || (signedIn() && resource.data.uid == request.auth.uid);
     }
 
     // Username -> hidden login. Readable before sign-in so the login screen can find it.
@@ -44,7 +53,7 @@ service cloud.firestore {
             && !exists(/databases/$(database)/documents/meta/setup)
             && existsAfter(/databases/$(database)/documents/meta/setup));
       allow update: if admin();
-      allow delete: if false;
+      allow delete: if admin();
     }
 
     match /settings/{doc} {
