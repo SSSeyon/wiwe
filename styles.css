@@ -310,3 +310,7 @@ body.dark-mode .b3d-host{background:#1C2126}
 .bp-focus{animation:bpPulse 1s ease-in-out 4}
 @keyframes bpPulse{50%{opacity:.25}}
 .bp-find{min-width:190px}
+.bp-card{max-width:560px;width:100%;margin:0 auto;padding:14px 10px}
+.bp-room:hover>rect:nth-of-type(1),.bp-room:hover>rect:nth-of-type(2){filter:brightness(1.06)}
+.bp-room:focus-visible{outline:none}
+.bp-room:focus-visible>rect:last-of-type{stroke:#E5007E}

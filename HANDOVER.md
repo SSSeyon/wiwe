@@ -1,6 +1,6 @@
 # Wiwe Apartments: Operations app · Handover
 
-Version 1.5.1 · Vanilla HTML/CSS/JS PWA · GitHub Pages + Firebase (Auth + Firestore)
+Version 1.6.0 · Vanilla HTML/CSS/JS PWA · GitHub Pages + Firebase (Auth + Firestore)
 
 ## 1. Go-live checklist
 
@@ -152,3 +152,11 @@ Timestamps are epoch milliseconds. Dates are `YYYY-MM-DD` strings in local (Lago
 - **Floor plans:** one per floor (or pick one). Each room shows its big number, status, the guest's first name (front desk only), a red ! when it needs attention, and its windows on the outside walls in the status colour.
 - **Find a room** highlights the room in pink and scrolls to it. Room details show "Where" with a "Show on building" button.
 - The Room board's Building layout and the Building page (all roles) both use this view.
+
+## 11. Building picture (v1.6.0). Replaces the floor plans.
+
+- **One flat picture** of the block seen from the road (`js/building.js`). The floor plans were removed at the owner's request.
+- **Each floor is a band.** The windows are replaced by **room-number tiles** coloured by status:
+  - **front row:** two big tiles (Rooms 1 and 2) either side of the arched balcony bay, with ENTRANCE on the ground floor, a status word, a shadow, and a red ! when the room needs attention
+  - **back row:** three smaller tiles (Rooms 3, 4, 5, left to right as seen from the road) raised above and behind the front tiles
+- **Find a room** outlines the tile in pink and scrolls to it. Tapping a tile opens the room. Room details still say "Where" (e.g. "First floor, back row, middle").
