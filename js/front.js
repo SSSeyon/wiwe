@@ -103,12 +103,38 @@ function openRoom(id) {
   if (st === 'ooo' && has('manager', 'maintenance')) acts.push('<button class="btn primary" type="button" onclick="backInService(\'' + r.id + '\')">Back in service (needs cleaning)</button>');
   if (st === 'ready' && has('housekeeping', 'manager')) acts.push('<button class="btn danger" type="button" onclick="openUnexpectedUse(\'' + r.id + '\')">Found used with no guest</button>');
   if (has('manager') && !s) acts.push('<button class="btn" type="button" onclick="openSetStatus(\'' + r.id + '\')">Set status…</button>');
+  // The one thing to do next goes first, as a big button; the rest stay below as smaller ones
+  var nx = roomNextStep(r);
+  if (nx) {
+    acts = acts.filter(function (a) { return a.indexOf(nx.fn) < 0; }).map(function (a) { return a.replace('class="btn primary"', 'class="btn"'); });
+    b = '<button type="button" class="next-step" onclick="' + nx.fn.replace(/"/g, '&quot;') + '"><span class="ns-t">' + esc(nx.label) + '</span>' + (nx.hint ? '<span class="ns-h">' + esc(nx.hint) + '</span>' : '') + '</button>' + b;
+  }
   b += '<div class="row">' + acts.join('') + '</div>';
   var hist = S.data.stays.filter(function (x) { return x.roomId === r.id && x.status === 'checked_out'; }).slice(0, 5);
   if (hist.length) b += '<div><h3 style="font-size:15px;margin-bottom:6px">Recent stays</h3>' + hist.map(function (x) { return '<div class="list-row clickable" onclick="openStay(\'' + x.id + '\')"><span class="main-t"><strong>' + esc(x.guestName) + '</strong><span>' + fmtDate(x.checkInDate) + ' → ' + fmtDate(x.checkOutDate) + '</span></span><span class="money">' + money(x.total) + '</span></div>'; }).join('') + '</div>';
   var jobs = S.data.jobs.filter(function (j) { return j.roomId === r.id; }).slice(0, 5);
   if (jobs.length) b += '<div><h3 style="font-size:15px;margin-bottom:6px">Maintenance</h3>' + jobs.map(function (j) { return '<div class="list-row clickable" onclick="openJob(\'' + j.id + '\')"><span class="main-t"><strong>' + esc(j.title) + '</strong><span>' + fmtDate(j.createdAt) + '</span></span>' + jobPill(j) + '</div>'; }).join('') + '</div>';
   openModal('Room ' + r.number, b);
+}
+/* What this person should do next with this room, or null. fn is the onclick code. */
+function roomNextStep(r) {
+  var st = displayStatus(r), s = stayOf(r), desk = has('manager', 'frontdesk');
+  var task = S.data.tasks.filter(function (t) { return t.roomId === r.id && t.type === 'turnover' && t.status !== 'done'; })[0];
+  if (desk && (st === 'ready' || st === 'reserved')) {
+    var rv = reservationToday(r);
+    return { label: rv ? 'Check in ' + rv.guestName : 'Check in a guest', hint: rv ? 'Reserved for today' : 'Room is clean and ready', fn: "openCheckIn('" + r.id + "'" + (rv ? ",'" + rv.id + "'" : '') + ')' };
+  }
+  if (desk && s) {
+    if (isOverstay(s)) return { label: 'Check out ' + s.guestName, hint: 'Overstayed: was due out ' + fmtDate(s.checkOutDate), fn: "openCheckOut('" + s.id + "')" };
+    if (dueOutToday(s)) return { label: 'Check out ' + s.guestName, hint: 'Due out today by ' + S.settings.checkOutTime, fn: "openCheckOut('" + s.id + "')" };
+    if ((s.balance || 0) > 0) return { label: 'Take balance payment', hint: s.guestName + ' owes ' + money(s.balance), fn: "openExtend('" + s.id + "',true)" };
+    return { label: 'Open ' + s.guestName + "'s stay", hint: 'Leaves ' + fmtDate(s.checkOutDate), fn: "openStay('" + s.id + "')" };
+  }
+  if (task && task.status === 'inspection' && desk) return { label: 'Inspect the room', hint: 'Cleaning finished' + (task.assigneeName ? ' by ' + task.assigneeName : ''), fn: "go('task',{id:'" + task.id + "'})" };
+  if (task && task.status === 'todo' && has('housekeeping', 'manager')) return { label: 'Start cleaning', hint: 'Turnover clean is waiting', fn: "startTask('" + task.id + "');go('task',{id:'" + task.id + "'})" };
+  if (task && task.status === 'in_progress' && (task.assignee === S.user.uid || has('manager'))) return { label: 'Continue cleaning', hint: (task.assigneeName || '') + ' started ' + fmtTime(task.startedAt), fn: "go('task',{id:'" + task.id + "'})" };
+  if (st === 'ooo' && has('manager', 'maintenance')) return { label: 'Back in service', hint: r.oooReason ? 'Out of order: ' + r.oooReason : 'Goes to cleaning first', fn: "backInService('" + r.id + "')" };
+  return null;
 }
 /* Manager override: set a room's status by hand, with a reason. Logged in the activity log. */
 var SET_STATUS_OPTIONS = [['ready', 'Ready (clean and inspected)'], ['dirty', 'Dirty (needs cleaning)'], ['cleaning', 'Cleaning'], ['inspect', 'Waiting inspection'], ['ooo', 'Out of order']];
@@ -228,7 +254,9 @@ async function saveCheckIn() {
   var type = roomType(r), rate = Number(type.rate) || 0, n = Math.max(1, num(val('ci-nights')));
   var total = Math.max(0, rate * n - disc), caution = S.settings.cautionEnabled ? num(val('ci-caution')) : 0;
   var roomPaid = Math.min(amount, total), cautionPaid = Math.max(0, amount - total);
-  if (caution && cautionPaid < caution && !confirm('The amount received does not cover the room and the caution fee. Continue anyway?')) return;
+  // A wrong pre-filled amount must not slip through: anything short of the room price is confirmed as a part payment
+  if (amount < total) { if (!confirm('Part payment?\n\nReceived ' + money(amount) + ' but the stay costs ' + money(total) + '.\n' + money(total - amount) + ' will be recorded as still owed' + (caution ? ', and no caution fee is held' : '') + '.\n\nOK = save as part payment. Cancel = fix the amount.')) return; }
+  else if (caution && cautionPaid < caution && !confirm('The room is paid, but only ' + money(cautionPaid) + ' of the ' + money(caution) + ' caution fee was received. Continue anyway?')) return;
   $('ci-save').disabled = true;
   var now = Date.now(), t = todayStr(), b = db.batch();
   var sref = S.form.rvId ? db.collection('stays').doc(S.form.rvId) : db.collection('stays').doc();
@@ -371,7 +399,9 @@ function saveExtend() {
     if (clash) return toast('Room ' + s.roomNo + ' is reserved for ' + clash.guestName + ' from ' + fmtDate(clash.checkInDate) + '. Move one of them first.', true);
     upd.checkOutDate = newOut; upd.nights = (s.nights || 0) + n; upd.total = (s.total || 0) + extra;
   }
-  upd.paid = (s.paid || 0) + amount; upd.balance = (s.balance || 0) + extra - amount;
+  var due = (s.balance || 0) + extra;
+  if (amount < due && !confirm('Part payment?\n\nReceived ' + money(amount) + ' but ' + money(due) + ' is due.\n' + money(due - amount) + ' will stay on the guest\'s balance.\n\nOK = save as part payment. Cancel = fix the amount.')) return;
+  upd.paid = (s.paid || 0) + amount; upd.balance = due - amount;
   var b = db.batch();
   b.update(db.collection('stays').doc(s.id), upd);
   if (amount > 0) b.set(db.collection('payments').doc(), Object.assign({ stayId: s.id, roomNo: s.roomNo, guestName: s.guestName, amount: amount, kind: S.form.balanceOnly ? 'balance' : 'extension', method: method, sender: val('ex-sender'), ref: ref, photos: S.form.payPhotos, status: 'unconfirmed' }, stamp()));

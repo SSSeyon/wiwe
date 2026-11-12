@@ -277,3 +277,12 @@ Do this once, after publishing the rules:
 ## 20. v2.4.1
 - **Phone Home:** the section cards now share out the whole screen between the greeting and the bottom bar (`fitHome()` in js/core.js sets the grid height; it divides by the text-size zoom). 6 or fewer sections → 2 per row, more → 3 per row; icons and names are bigger.
 - **Room board:** each back-row tile is the same width as, and centred directly above, the front tile below it; the middle back tile is centred over the entrance bay. The grey band behind the back row and the drop shadow under the front tiles are gone.
+
+## 21. v2.5.0: fewer taps on phones
+- **Room board tiles:** back-row tiles are narrower than the front ones (52 vs 72) and centred over them.
+- **Room pop-up next step:** `roomNextStep()` in js/front.js puts the one thing to do next as a big button at the top: Check in (named if reserved today), Check out (due today / overstayed), Take balance payment, Inspect, Start / Continue cleaning, or Back in service. The other actions stay below.
+- **js/phone.js (new):**
+  - Swipe left/right on a section's page to move between its tabs (skips things that scroll sideways, e.g. the stays calendar, and form fields).
+  - Pull down at the top of a page to refresh (reconnects Firestore, checks for an app update). The browser's own pull-to-reload is turned off on phones (`overscroll-behavior-y`).
+  - Form drafts: anything typed into a pop-up form is kept in localStorage (`wiwe_draft_<pop-up title>`, 12 hours) until that form is saved. Reopening the same pop-up brings it back with a "Start empty" link. Photos and passwords are never kept; pre-filled amounts are only kept if someone changed them.
+- **Part payments:** check-in, extend and balance payment ask for confirmation when the amount received is less than the amount due, stating how much will be owed.
