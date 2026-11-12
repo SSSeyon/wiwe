@@ -93,7 +93,8 @@ function movesList(arr, dep) {
 function openRoom(id) {
   var r = byId(S.data.rooms, id); if (!r) return;
   var st = displayStatus(r), s = stayOf(r), type = roomType(r), b = '';
-  b += '<div class="row">' + pill(ROOM_STATUS[st].label, ROOM_STATUS[st].cls) + '<span class="muted">' + esc(type.name) + ' · ' + money(type.rate) + ' per night</span></div>';
+  b += '<div class="row">' + pill(ROOM_STATUS[st].label, ROOM_STATUS[st].cls) + '<span class="muted">' + esc(type.name) + ' · ' + money(type.rate) + ' per night</span></div>' +
+    '<div class="row between"><span class="muted">Where: <strong style="color:var(--text)">' + esc(typeof roomWhere === 'function' ? roomWhere(r) : floorName(roomFloor(r))) + '</strong></span><button class="btn small" type="button" onclick="closeModal();go(\'building\');setTimeout(function(){b3dFocus(\'' + r.id + '\')},50)">Show on building</button></div>';
   if (s) b += '<div class="card"><div class="row between"><div class="main-t"><strong>' + esc(s.guestName) + '</strong><div class="muted">' + fmtDate(s.checkInDate) + ' → ' + fmtDate(s.checkOutDate) + ' · ' + s.nights + ' night' + (s.nights > 1 ? 's' : '') + '</div></div><button class="btn small" type="button" onclick="openStay(\'' + s.id + '\')">Open stay</button></div></div>';
   var acts = [];
   if (has('manager', 'frontdesk')) {

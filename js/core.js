@@ -1,4 +1,4 @@
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 
 /* =========================================================
    Constants
@@ -108,6 +108,7 @@ function newId(col) { return db.collection(col).doc().id; }
 
 var ICONS = {
   today: '<path d="M3 11l9-8 9 8v10H3z"/>',
+  building: '<path d="M4 21V8l8-5 8 5v13"/><path d="M9 21v-4h6v4M8 10h2M14 10h2M8 14h2M14 14h2"/>',
   board: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
   stays: '<path d="M3 18V8M3 14h18v4M21 14v-2a3 3 0 0 0-3-3h-7v5"/>',
   payments: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>',
@@ -396,6 +397,7 @@ function alertList(list, limit) {
 var NAV = [
   { id: 'today', label: 'Today', roles: ['admin', 'manager'] },
   { id: 'board', label: 'Room board', roles: ['manager', 'frontdesk'] },
+  { id: 'building', label: 'Building', roles: ['manager', 'frontdesk', 'housekeeping', 'maintenance'] },
   { id: 'stays', label: 'Stays', roles: ['manager', 'frontdesk'] },
   { id: 'payments', label: 'Payments', roles: ['manager', 'frontdesk'] },
   { id: 'housekeeping', label: 'Housekeeping', roles: ['manager', 'frontdesk', 'housekeeping', 'maintenance'] },

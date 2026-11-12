@@ -1,6 +1,6 @@
 # Wiwe Apartments: Operations app · Handover
 
-Version 1.3.0 · Vanilla HTML/CSS/JS PWA · GitHub Pages + Firebase (Auth + Firestore)
+Version 1.4.0 · Vanilla HTML/CSS/JS PWA · GitHub Pages + Firebase (Auth + Firestore)
 
 ## 1. Go-live checklist
 
@@ -119,3 +119,21 @@ Timestamps are epoch milliseconds. Dates are `YYYY-MM-DD` strings in local (Lago
   - Front, Back and +/− buttons
   - floor buttons that hide the floors above and the roof, to show the rooms from above
 - **Fallback:** if WebGL or the CDN isn't available, the 2D "Floors" layout is shown. The Room board also keeps "Floors" and "Cards" as layouts.
+
+## 9. Building page and room identification (v1.4.0)
+
+- **Model corrected from the opening video.** The entrance is on the **short end** (on the left as seen from the road), not the long front. From outside, facing the entrance:
+  - in the middle, an arched bay over 3 floors: entrance and reception on the ground floor, a balcony with a door, window and railing on each upper floor
+  - on the left, a tall pair of louvred windows on each floor
+  - on the right, a smaller window on each floor
+  - on top, a raised parapet with a dark cap
+- **Corridor:** runs from the entrance through the middle of the building.
+- **Slots:** positions 1–2 face the road and 3–5 face the back, counted from the entrance end. Same on every floor.
+- **Telling rooms apart:**
+  - room-number plaques on the outside walls (with a status-colour stripe)
+  - big numbers on each room's floor in the look-inside view
+  - ENTRANCE, RECEPTION, STAIRS, CORRIDOR and ROAD · GATE signs
+  - a colour key
+  - **Find a room**: turns the model to face the room, makes it flash, and states where it is, e.g. "first floor, back, middle"
+- **Building page:** a new nav item for every role, including housekeeping and maintenance. They see room numbers and statuses but not guest details, because the rules don't let them read stays.
+- **Room details** now show **Where** the room is, with a **Show on building** button.
