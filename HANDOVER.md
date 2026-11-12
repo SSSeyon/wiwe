@@ -273,3 +273,7 @@ Do this once, after publishing the rules:
 - **Phone bottom bar:** Home · main section (Rooms / Housekeeping / Maintenance) · **Do** (+, opens the quick actions) · Me.
 - **Fewer steps:** payment method starts on the one last used on that device (`wiwe_paymethod`); Check-in and Extend/Balance fill "Amount received" with the amount due until the user types in it.
 - **Speed:** stays (checking out within the last 90 days or later), payments, stock moves and expenses from the last 90 days are kept in memory (`RECENT_DAYS`). Unconfirmed payments and pending expenses are always loaded whatever their age. Reports still read any month; Backup exports everything; returning-guest lookup asks the database for older stays by phone number.
+
+## 20. v2.4.1
+- **Phone Home:** the section cards now share out the whole screen between the greeting and the bottom bar (`fitHome()` in js/core.js sets the grid height; it divides by the text-size zoom). 6 or fewer sections → 2 per row, more → 3 per row; icons and names are bigger.
+- **Room board:** each back-row tile is the same width as, and centred directly above, the front tile below it; the middle back tile is centred over the entrance bay. The grey band behind the back row and the drop shadow under the front tiles are gone.

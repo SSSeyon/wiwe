@@ -28,7 +28,7 @@ function bpKitchen(x, y, s, col, has) {
   if (!has) g += '<path d="M' + (x - 0.5) + ' ' + (y - 0.5) + 'L' + (x + s + 0.5) + ' ' + (y + s + 0.5) + 'M' + (x + s + 0.5) + ' ' + (y - 0.5) + 'L' + (x - 0.5) + ' ' + (y + s + 0.5) + '" stroke="#C62828" stroke-width="' + (s > 9 ? 1.8 : 1.5) + '" stroke-linecap="round"/>';
   return g + '</g>';
 }
-// One room tile. front = bigger, with a shadow and its status written under the number
+// One room tile. front = bigger, with its status written under the number
 function bpTile(r, x, y, w, h, front) {
   if (!r) return '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="6" fill="#E9DDB4" stroke="#CDBB84" stroke-width="1.5" stroke-dasharray="4 3"/>';
   var c = bpCol(r), st = displayStatus(r), stay = stayOf(r), focus = BP.focus === r.id;
@@ -36,7 +36,6 @@ function bpTile(r, x, y, w, h, front) {
   var s = '<g id="bp-' + r.id + '" role="button" tabindex="0" class="bp-room" aria-label="Room ' + esc(r.number) + ', ' + esc(ROOM_STATUS[st].label) + ', ' + esc(roomWhere(r)) + '"' +
     ' onclick="openRoom(\'' + r.id + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openRoom(\'' + r.id + '\')}">' +
     '<title>Room ' + esc(r.number) + ' · ' + esc(ROOM_STATUS[st].label) + (stay && st === 'occupied' ? ' · ' + esc(stay.guestName) : '') + '</title>';
-  if (front) s += '<rect x="' + (x + 1) + '" y="' + (y + 1.2) + '" width="' + w + '" height="' + h + '" rx="5" fill="rgba(22,22,22,.22)"/>';
   s += '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + (front ? 5 : 4) + '" fill="' + c[2] + '" stroke="' + (front ? 'rgba(255,255,255,.9)' : 'rgba(22,22,22,.35)') + '" stroke-width="' + (front ? 0.8 : 0.5) + '"/>';
   var kit = !!roomType(r).hasKitchen, isz = front ? 13 : 10;
   if (kit) s += bpKitchen(x + (front ? 6 : 5), y + (h - isz) / 2, isz, c[3], true);
@@ -55,10 +54,9 @@ function bpBuilding(by, nf) {
   [12, 282].forEach(function (x) { s += '<rect x="' + x + '" y="' + top + '" width="5" height="' + (nf * FH) + '" fill="#FFFFFF" opacity=".9"/>'; });
   for (var f = nf - 1; f >= 0; f--) {
     var y = top + (nf - 1 - f) * FH, rs = by[f] || [];
-    // back row: raised, smaller
-    s += '<rect x="30" y="' + (y + 3) + '" width="240" height="22" rx="3" fill="rgba(22,22,22,.06)"/>';
-    // left edge lines up with front room 1, right edge with front room 2, equal gaps between
-    s += bpTile(rs[2], 36, y + 5, 68, 18, false) + bpTile(rs[3], 116, y + 5, 68, 18, false) + bpTile(rs[4], 196, y + 5, 68, 18, false);
+    // back row: raised, shorter
+    // each back tile sits directly above the front tile below it (same width, same centre); the middle one is centred over the entrance
+    s += bpTile(rs[2], 36, y + 2, 72, 17, false) + bpTile(rs[3], 114, y + 2, 72, 17, false) + bpTile(rs[4], 192, y + 2, 72, 17, false);
     // arched balcony bay (entrance on the ground floor)
     s += '<rect x="119" y="' + (y + 25) + '" width="62" height="' + (FH - 28) + '" fill="#E9D79B"/>';
     s += '<path d="M126 ' + (y + FH - 4) + ' L126 ' + (y + 36) + ' Q150 ' + (y + 22) + ' 174 ' + (y + 36) + ' L174 ' + (y + FH - 4) + ' Z" fill="#6E5C3A"/>';

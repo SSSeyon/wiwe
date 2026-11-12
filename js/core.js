@@ -1,4 +1,4 @@
-const APP_VERSION = '2.4.0';
+const APP_VERSION = '2.4.1';
 
 /* =========================================================
    Constants
@@ -553,6 +553,16 @@ VIEWS.home = {
     }).join('') + '</div>';
   }
 };
+/* Phones: Home cards share out the whole screen between the title and the bottom bar, so they are as big as possible with no scrolling */
+function fitHome() {
+  var g = document.querySelector('.home-grid'); if (!g) return;
+  if (window.innerWidth > 860) { g.style.height = ''; g.removeAttribute('data-cols'); return; }
+  var n = g.children.length, bb = $('bottomBar'), bottom = bb && bb.offsetHeight ? bb.getBoundingClientRect().top : window.innerHeight;
+  g.setAttribute('data-cols', n <= 6 ? 2 : 3);
+  var z = parseFloat(getComputedStyle(document.documentElement).zoom) || 1; // text size uses CSS zoom; screen pixels -> CSS pixels
+  g.style.height = Math.max(0, Math.floor((bottom - g.getBoundingClientRect().top - 12) / z)) + 'px';
+}
+window.addEventListener('resize', function () { if (S.view === 'home') fitHome(); });
 function setTab(view, tab) { S.tab[view] = tab; render(); }
 function tabs(view, list) { var cur = S.tab[view] || list[0][0]; return '<div class="tabs" role="tablist">' + list.map(function (t) { return '<button type="button" role="tab" aria-selected="' + (cur === t[0]) + '" class="tab' + (cur === t[0] ? ' active' : '') + '" onclick="setTab(\'' + view + '\',\'' + t[0] + '\')">' + esc(t[1]) + '</button>'; }).join('') + '</div>'; }
 function curTab(view, def) { return S.tab[view] || def; }
@@ -576,6 +586,7 @@ function render() {
   hydratePhotos($('view'));
   decorateCards($('view'));
   paintBottomBar();
+  if (S.view === 'home') fitHome();
   if (typeof afterRender === 'function') afterRender();
   document.title = (typeof v.title === 'function' ? v.title() : v.title) + ' · Wiwe';
 }
