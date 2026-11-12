@@ -1,12 +1,12 @@
 // Firebase project settings. Paste the values from
 // Firebase console > Project settings > Your apps > Web app.
 const FIREBASE_CONFIG = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyALioryBrQ17Byil1vRr8xc7CoiEe9lgH0",
+  authDomain: "wiwe-apartments.firebaseapp.com",
+  projectId: "wiwe-apartments",
+  storageBucket: "wiwe-apartments.firebasestorage.app",
+  messagingSenderId: "457331018216",
+  appId: "1:457331018216:web:c919760b23bc17ac673c5d"
 };
 
 // Staff log in with a username; behind the scenes it becomes username@<this domain>.
