@@ -471,3 +471,47 @@ body[data-theme=colour] .grid-stats .stat:nth-child(5n+4){--sc:#DB2777}
 body[data-theme=colour] .grid-stats .stat:nth-child(5n+5){--sc:#0891B2}
 body[data-theme=colour] .stat.dark{background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 50%,#DB2777));border:none;color:#fff}
 body[data-theme=colour] .stat.dark .label,body[data-theme=colour] .stat.dark .sub{color:#fff}
+
+/* ===================== v2.2: less clutter ===================== */
+/* action menu (one button that opens a short list) */
+.act-menu{position:relative;display:inline-block}
+.act-menu>summary{list-style:none;cursor:pointer}
+.act-menu>summary::-webkit-details-marker{display:none}
+.act-list{position:absolute;right:0;top:calc(100% + 6px);z-index:60;min-width:200px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:6px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:2px}
+.act-item{display:block;width:100%;text-align:left;padding:10px 12px;border:none;background:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;min-height:42px;color:var(--text)}
+.act-item:hover{background:var(--surface)}
+@media (max-width:520px){.act-list{right:auto;left:0}}
+/* small second-level tabs */
+.subtabs{display:flex;gap:6px;flex-wrap:wrap}
+.subtab{border:1px solid var(--border-strong);background:var(--card);color:var(--dim);border-radius:999px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;min-height:36px}
+.subtab.on{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+/* folding cards */
+details.fold>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+details.fold>summary::-webkit-details-marker{display:none}
+details.fold>summary h2{margin:0;flex:1}
+details.fold>summary::after{content:'';width:9px;height:9px;border-right:2px solid var(--dim);border-bottom:2px solid var(--dim);transform:rotate(45deg);margin:0 6px 4px;transition:transform .15s ease}
+details.fold[open]>summary::after{transform:rotate(-135deg);margin-bottom:-4px}
+details.fold[open]>summary{margin-bottom:14px}
+.form>details.fold{margin:0}
+/* room board key: counts, grey out empty states */
+.b3d-legend b{font-weight:700;margin-left:2px}
+.b3d-legend span.zero{opacity:.45}
+/* room board on phones: building first, then figures, then attention */
+@media (max-width:860px){
+  body[data-view=board] .board-split{display:contents}
+  body[data-view=board] .board-main{order:1}
+  body[data-view=board] .board-stats{order:2}
+  body[data-view=board] .board-side{order:3}
+  body[data-view=board] .board-main,body[data-view=board] .board-side{width:100%;flex:none}
+}
+/* My account */
+.acct-col{display:flex;flex-direction:column;gap:16px;max-width:760px}
+.acct-head{display:flex;align-items:center;gap:14px}
+.acct-head .main-t{display:flex;flex-direction:column;gap:2px}
+.acct-head strong{font-family:var(--font-display);font-size:20px}
+.acct-head span{color:var(--dim);font-size:13px}
+.avatar.big{width:56px;height:56px;font-size:20px}
+.acct-two{display:flex;flex-wrap:wrap;gap:4px 28px}
+.card .field+.field,.card .acct-two+.field,.card .field+.acct-two{margin-top:12px}
+.acct-foot{font-size:13px;padding:0 4px}
+.linkish{background:none;border:none;padding:0;color:var(--brand);font-weight:600;cursor:pointer;text-decoration:underline}

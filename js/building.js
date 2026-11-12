@@ -79,10 +79,12 @@ function bpBuilding(by, nf) {
 function buildingHtml() {
   var nf = bpFloorCount(), by = bpByFloor(), over = [];
   for (var i = 0; i < nf; i++) if ((by[i] || []).length > 5) over.push(floorName(i));
+  // One key: colour + how many rooms are in that state right now
   var legend = [['ready', 'Ready'], ['occupied', 'Occupied'], ['reserved', 'Reserved today'], ['dirty', 'Dirty'], ['cleaning', 'Cleaning / inspection'], ['ooo', 'Out of order']];
+  var cnt = {}; roomsSorted().forEach(function (r) { var st = displayStatus(r); if (st === 'inspect') st = 'cleaning'; cnt[st] = (cnt[st] || 0) + 1; });
   var fr = BP.focus && byId(S.data.rooms, BP.focus);
   return '<div class="bp-wrap">' +
-    '<div class="row between"><div class="b3d-legend" aria-label="Colour key">' + legend.map(function (l) { return '<span><i style="background:' + BP_COLORS[l[0]][2] + '"></i>' + l[1] + '</span>'; }).join('') + '<span><i style="background:#A12626;border-radius:999px"></i>Needs attention</span><span><svg width="14" height="14" viewBox="-1 -1 12 12" aria-hidden="true">' + bpKitchen(0, 0, 10, '#161616', true) + '</svg>Kitchen</span></div>' +
+    '<div class="row between"><div class="b3d-legend" aria-label="Colour key with room counts">' + legend.map(function (l) { return '<span' + (cnt[l[0]] ? '' : ' class="zero"') + '><i style="background:' + BP_COLORS[l[0]][2] + '"></i>' + l[1] + ' <b>' + (cnt[l[0]] || 0) + '</b></span>'; }).join('') + '<span><i style="background:#A12626;border-radius:999px"></i>Needs attention</span><span><svg width="14" height="14" viewBox="-1 -1 12 12" aria-hidden="true">' + bpKitchen(0, 0, 10, '#161616', true) + '</svg>Kitchen</span></div>' +
     '<label class="sr-only" for="bp-find">Find a room</label><select id="bp-find" class="search bp-find" onchange="bpFocus(this.value)"><option value="">Find a room…</option>' +
     roomsSorted().map(function (r) { return '<option value="' + r.id + '"' + (BP.focus === r.id ? ' selected' : '') + '>Room ' + esc(r.number) + ' · ' + esc(floorName(roomFloor(r))) + '</option>'; }).join('') + '</select></div>' +
     (fr ? '<div class="note"><strong>Room ' + esc(fr.number) + '</strong>: ' + esc(roomWhere(fr)) + '. ' + pill(ROOM_STATUS[displayStatus(fr)].label, ROOM_STATUS[displayStatus(fr)].cls) + ' <button class="btn small" type="button" onclick="openRoom(\'' + fr.id + '\')">Open room</button> <button class="btn small" type="button" onclick="bpFocus(\'\')">Clear</button></div>' : '') +

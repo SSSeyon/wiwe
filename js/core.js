@@ -1,4 +1,4 @@
-const APP_VERSION = '2.1.0';
+const APP_VERSION = '2.2.0';
 
 /* =========================================================
    Constants
@@ -169,6 +169,18 @@ function paintDarkIcon() {
   var m = document.querySelector('meta[name=theme-color]'); if (m) m.setAttribute('content', dark ? '#121212' : THEMES[t]);
 }
 (function () { var t = 'colour', d = false, z = 'normal'; try { t = localStorage.getItem('wiwe_theme') || 'colour'; d = localStorage.getItem('wiwe_dark') === '1'; z = localStorage.getItem('wiwe_size') || 'normal'; } catch (e) {} document.body.setAttribute('data-theme', THEMES[t] ? t : 'colour'); document.documentElement.setAttribute('data-size', z); if (d) document.body.classList.add('dark-mode'); document.addEventListener('DOMContentLoaded', paintDarkIcon); })();
+
+/* A button that opens a short list of actions: keeps headers to one or two buttons. items: [[label, onclickJs], ...] */
+function actionMenu(label, items, primary) {
+  return '<details class="act-menu"><summary class="btn' + (primary ? ' primary' : '') + '">' + esc(label) + ' <span aria-hidden="true">▾</span></summary><div class="act-list" role="menu">' +
+    items.map(function (i) { return '<button type="button" role="menuitem" class="act-item" onclick="this.closest(\'details\').open=false;' + i[1] + '">' + esc(i[0]) + '</button>'; }).join('') + '</div></details>';
+}
+document.addEventListener('click', function (e) { document.querySelectorAll('details.act-menu[open]').forEach(function (d) { if (!d.contains(e.target)) d.open = false; }); });
+/* A card that folds open and shut; remembers its state while the app is open */
+function foldOpen(key, def) { S.fold = S.fold || {}; return key in S.fold ? S.fold[key] : !!def; }
+function fold(key, title, body, def, extra) { return '<details class="card fold" data-k="' + key + '"' + (foldOpen(key, def) ? ' open' : '') + ' ontoggle="S.fold=S.fold||{};S.fold[this.dataset.k]=this.open"><summary><h2>' + esc(title) + '</h2>' + (extra || '') + '</summary><div class="fold-body">' + body + '</div></details>'; }
+/* Second row of small tabs inside a tab (e.g. Inventory → More) */
+function subTabs(key, list) { var cur = S.tab[key] || list[0][0]; return '<div class="subtabs" role="tablist">' + list.map(function (t) { return '<button type="button" role="tab" aria-selected="' + (cur === t[0]) + '" class="subtab' + (cur === t[0] ? ' on' : '') + '" onclick="setTab(\'' + key + '\',\'' + t[0] + '\')">' + esc(t[1]) + '</button>'; }).join('') + '</div>'; }
 
 /* Little icons on the cards inside each section, chosen from the card's heading. */
 var CARD_ICON_RULES = [
@@ -526,32 +538,19 @@ VIEWS.account = {
     var me = S.me, t = curTheme(), dark = document.body.classList.contains('dark-mode'), z = document.documentElement.getAttribute('data-size') || 'normal';
     var opt = function (on, click, label, extra) { return '<button type="button" class="acct-opt' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="' + click + '">' + (extra || '') + esc(label) + '</button>'; };
     var mine = NAV.filter(function (n) { return has.apply(null, n.roles); });
-    var h = '<div class="split"><div class="wide">';
-    h += '<div class="card"><h2>Profile</h2>' +
-      '<div class="list-row"><span>Name</span><strong>' + esc(me.name) + '</strong></div>' +
-      '<div class="list-row"><span>Username</span><strong>@' + esc(me.username || '') + '</strong></div>' +
-      '<div class="list-row"><span>Role</span><strong>' + esc((me.roles || []).map(function (r) { return ROLES[r]; }).join(', ')) + '</strong></div>' +
-      (me.phone ? '<div class="list-row"><span>Phone</span><strong>' + esc(me.phone) + '</strong></div>' : '') +
-      '<div class="note">' + (isAdmin() ? 'Change names, roles and usernames in Admin settings → Staff.' : 'To change your name, role or username, ask the owner.') + '</div></div>';
+    var h = '<div class="acct-col">';
+    h += '<div class="card"><div class="acct-head"><span class="avatar big">' + esc(initials(me.name)) + '</span><div class="main-t"><strong>' + esc(me.name) + '</strong><span>@' + esc(me.username || '') + ' · ' + esc((me.roles || []).map(function (r) { return ROLES[r]; }).join(', ')) + (me.phone ? ' · ' + esc(me.phone) : '') + '</span></div></div>' +
+      '<div class="acct-opts" style="margin-top:14px"><button class="btn" type="button" onclick="openMyPassword()">' + icon('key') + 'Change password</button>' +
+      '<button class="btn danger" type="button" onclick="signOut()">' + icon('logout') + 'Sign out</button>' +
+      (isAdmin() ? '<button class="btn" type="button" onclick="go(\'admin\')">' + icon('admin') + 'Admin settings</button>' : '') + '</div>' +
+      '<div class="muted" style="margin-top:10px">' + (isAdmin() ? 'Change names, roles and usernames in Admin settings → Staff.' : 'To change your name, role or username, or if you forget your password, ask the owner.') + '</div></div>';
     h += '<div class="card"><h2>Appearance (this device)</h2>' +
       '<div class="field">Colour scheme<div class="acct-opts">' + ['colour', 'mono', 'cream'].map(function (k) { return opt(t === k, "setTheme('" + k + "')", THEME_NAMES[k], '<span class="sw sw-' + k + '"></span>'); }).join('') + '</div></div>' +
-      '<div class="field">Dark mode<div class="acct-opts">' + opt(!dark, dark ? 'toggleDark()' : '', 'Off') + opt(dark, dark ? '' : 'toggleDark()', 'On') + '</div></div>' +
-      '<div class="field">Text size<div class="acct-opts">' + [['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']].map(function (s) { return opt(z === s[0], "setTextSize('" + s[0] + "')", s[1]); }).join('') + '</div></div>' +
+      '<div class="acct-two"><div class="field">Dark mode<div class="acct-opts">' + opt(!dark, dark ? 'toggleDark()' : '', 'Off') + opt(dark, dark ? '' : 'toggleDark()', 'On') + '</div></div>' +
+      '<div class="field">Text size<div class="acct-opts">' + [['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']].map(function (s) { return opt(z === s[0], "setTextSize('" + s[0] + "')", s[1]); }).join('') + '</div></div></div>' +
       '<label class="field">Open the app on<select onchange="setStartPage(this.value)"><option value="home">Home</option>' + mine.map(function (n) { return '<option value="' + n.id + '"' + (startPage() === n.id ? ' selected' : '') + '>' + esc(n.label) + '</option>'; }).join('') + '</select></label></div>';
-    h += '</div><div class="narrow">';
-    h += '<div class="card"><h2>Password and sign-in</h2><div class="acct-opts" style="flex-direction:column">' +
-      '<button class="btn" type="button" onclick="openMyPassword()">' + icon('key') + 'Change my password</button>' +
-      '<button class="btn danger" type="button" onclick="signOut()">' + icon('logout') + 'Sign out</button></div>' +
-      '<div class="note" style="margin-top:10px">Forgot your password? The owner can send you a new set-up link.</div></div>';
-    if (isAdmin()) h += '<div class="card"><h2>Owner tools</h2><div class="acct-opts" style="flex-direction:column">' +
-      '<button class="btn" type="button" onclick="go(\'admin\')">' + icon('admin') + 'Admin settings</button>' +
-      '<button class="btn" type="button" onclick="go(\'today\')">' + icon('today') + 'Today and daily summary</button></div></div>';
-    else if (has('manager')) h += '<div class="card"><h2>Manager tools</h2><div class="acct-opts" style="flex-direction:column">' +
-      '<button class="btn" type="button" onclick="go(\'reports\')">' + icon('reports') + 'Reports</button>' +
-      '<button class="btn" type="button" onclick="go(\'today\')">' + icon('today') + 'Today and alerts</button></div></div>';
-    h += '<div class="card"><h2>About this app</h2><div class="list-row"><span>Version</span><strong>' + esc(APP_VERSION) + '</strong></div>' +
-      '<button class="btn" type="button" style="margin-top:10px" onclick="checkForUpdate()">' + icon('download') + 'Check for update</button></div>';
-    return h + '</div></div>';
+    h += '<div class="acct-foot muted">Wiwe app version ' + esc(APP_VERSION) + ' · <button class="linkish" type="button" onclick="checkForUpdate()">Check for update</button></div>';
+    return h + '</div>';
   }
 };
 function openMyPassword() {

@@ -22,9 +22,8 @@ VIEWS.today = {
     html += '<div class="split"><div class="wide"><div class="card"><div class="card-head"><h2>Confirm payments</h2>' + (up.length ? pill(up.length + ' waiting', 'st-alert') : pill('All matched', 'st-ready')) + '</div>' +
       (up.length ? '<div class="note" style="margin-bottom:8px">Open your bank app. Tap "Seen in bank" only when the money is there.</div>' + up.map(paymentRow).join('') : '<div class="muted">Nothing to confirm.</div>') + '</div>' +
       '<div class="card"><h2>Leak watch and approvals</h2><div class="stack">' + alertList(al) + '</div></div></div>' +
-      '<div class="narrow"><div class="card"><h2>Rooms</h2><div class="legend">' + Object.keys(ROOM_STATUS).map(function (k) { var n = rooms.filter(function (r) { return displayStatus(r) === k; }).length; return n ? pill(ROOM_STATUS[k].label + ' · ' + n, ROOM_STATUS[k].cls) : ''; }).join('') + '</div><button class="btn block" style="margin-top:12px" type="button" onclick="go(\'board\')">Open room board</button></div>' +
-      dailySummaryCard() +
-      '<div class="card"><h2>Recent activity</h2><div id="today-audit" class="muted">Loading…</div></div></div></div>';
+      '<div class="narrow">' + dailySummaryCard() +
+      '<div class="card"><div class="card-head"><h2>Recent activity</h2><button class="btn small" type="button" onclick="go(\'admin\',{tab:\'audit\'})">See all</button></div><div id="today-audit" class="muted">Loading…</div></div></div></div>';
     setTimeout(loadRecentAudit, 0);
     return html;
   }
@@ -33,7 +32,7 @@ var auditCache = { at: 0, html: '' };
 function loadRecentAudit() {
   var box = $('today-audit'); if (!box) return;
   if (Date.now() - auditCache.at < 60000 && auditCache.html) { box.innerHTML = auditCache.html; return; }
-  db.collection('audit').orderBy('at', 'desc').limit(12).get().then(function (s) {
+  db.collection('audit').orderBy('at', 'desc').limit(5).get().then(function (s) {
     auditCache = { at: Date.now(), html: s.docs.length ? s.docs.map(function (d) { var a = d.data(); return '<div class="list-row"><span class="main-t"><strong>' + esc(a.action.replace(/_/g, ' ')) + '</strong><span>' + esc(a.details || '') + ' · ' + esc(a.byName || '') + ', ' + fmtTime(a.at) + '</span></span></div>'; }).join('') : 'Nothing yet.' };
     var b = $('today-audit'); if (b) b.innerHTML = auditCache.html;
   }).catch(function () { var b = $('today-audit'); if (b) b.textContent = 'Not available.'; });
@@ -49,7 +48,7 @@ VIEWS.reports = {
     return monthPicker(month) + '<div class="card empty">Loading ' + esc(month) + '…</div>';
   }
 };
-function monthPicker(m) { return '<div class="row between"><label class="field" style="flex-direction:row;align-items:center">Month <input type="month" value="' + m + '" onchange="S.params.month=this.value;S.report=null;render()" style="width:auto"></label><div class="row"><button class="btn small" type="button" onclick="S.report=null;render()">Refresh</button><button class="btn small" type="button" onclick="exportCsv(\'payments\')">Payments CSV</button><button class="btn small" type="button" onclick="exportCsv(\'expenses\')">Expenses CSV</button></div></div>'; }
+function monthPicker(m) { return '<div class="row between"><label class="field" style="flex-direction:row;align-items:center">Month <input type="month" value="' + m + '" onchange="S.params.month=this.value;S.report=null;render()" style="width:auto"></label><div class="row"><button class="btn small" type="button" onclick="S.report=null;render()">Refresh</button>' + actionMenu('Export', [['Payments (CSV)', "exportCsv('payments')"], ['Expenses (CSV)', "exportCsv('expenses')"]]) + '</div></div>'; }
 async function loadReport(month) {
   var start = parseDate(month + '-01').getTime(), endD = parseDate(month + '-01'); endD.setMonth(endD.getMonth() + 1); var end = endD.getTime();
   var first = month + '-01', last = dateStr(new Date(end - 86400000)), days = daysBetween(first, last) + 1;
@@ -86,9 +85,9 @@ function reportHtml(R) {
   var html = monthPicker(R.month) + '<section class="grid-stats">' +
     '<div class="stat dark"><span class="label">Revenue</span><span class="value">' + money(revenue) + '</span><span class="sub">' + money(confirmed) + ' confirmed in bank</span></div>' +
     stat('Expenses', money(spent), exps.length + ' records') + stat('Net', money(revenue - spent), revenue ? Math.round((revenue - spent) / revenue * 100) + '% margin' : '', revenue - spent < 0 ? 'warn' : '') +
-    stat('Occupancy', Math.round(occ * 100) + '%', sold + ' of ' + avail + ' room-nights') + stat('Average rate per night', money(adr), 'Money earned ÷ nights sold') + stat('Earnings per room per night', money(avail ? revenue / avail : 0), 'Money earned ÷ every room, every night') + '</section>';
-  html += '<div class="split"><div class="wide"><div class="card"><h2>By room</h2><div class="table-wrap"><table><thead><tr><th>Room</th><th class="right">Nights</th><th class="right">Occupancy</th><th class="right">Revenue</th><th class="right">Repairs</th></tr></thead><tbody>' +
-    rooms.map(function (r) { var n = nightsByRoom[r.number] || 0; return '<tr><td><strong>' + esc(r.number) + '</strong> <span class="muted small">' + esc(roomType(r).name) + '</span></td><td class="right">' + n + '</td><td class="right">' + Math.round(n / R.days * 100) + '%</td><td class="right money">' + money(revByRoom[r.number] || 0) + '</td><td class="right money">' + money(repByRoom[r.number] || 0) + '</td></tr>'; }).join('') + '</tbody></table></div></div></div>' +
+    stat('Occupancy', Math.round(occ * 100) + '%', sold + ' of ' + avail + ' room-nights · ' + money(adr) + ' average per night sold') + '</section>';
+  html += '<div class="split"><div class="wide"><details class="card fold"><summary><h2>By room</h2><span class="muted">Earnings per room per night: <strong>' + money(avail ? revenue / avail : 0) + '</strong></span></summary><div class="table-wrap"><table><thead><tr><th>Room</th><th class="right">Nights</th><th class="right">Occupancy</th><th class="right">Revenue</th><th class="right">Repairs</th></tr></thead><tbody>' +
+    rooms.map(function (r) { var n = nightsByRoom[r.number] || 0; return '<tr><td><strong>' + esc(r.number) + '</strong> <span class="muted small">' + esc(roomType(r).name) + '</span></td><td class="right">' + n + '</td><td class="right">' + Math.round(n / R.days * 100) + '%</td><td class="right money">' + money(revByRoom[r.number] || 0) + '</td><td class="right money">' + money(repByRoom[r.number] || 0) + '</td></tr>'; }).join('') + '</tbody></table></div></details></div>' +
     '<div class="narrow"><div class="card"><h2>Expenses by category</h2>' + (Object.keys(cats).length ? '<div class="bars">' + Object.keys(cats).sort(function (a, b) { return cats[b] - cats[a]; }).map(function (k) { return '<div class="bar-row"><span>' + esc(EXPENSE_CATS[k] || k) + '</span><span class="bar-track"><span style="width:' + Math.round(cats[k] / maxC * 100) + '%"></span></span><span class="right money">' + money(cats[k]) + '</span></div>'; }).join('') + '</div>' : '<div class="muted">No expenses.</div>') + '</div>' +
     '<div class="card"><h2>Leak indicators</h2>' +
     '<div class="list-row"><span>Store items issued per night sold</span><strong>' + (sold ? (-sum(issued, function (m) { return m.qty; }) / sold).toFixed(1) : '—') + '</strong></div>' +
@@ -160,18 +159,20 @@ document.addEventListener('keydown', function (e) { if (S.view === 'admin' && ad
 
 function adminGeneral() {
   var s = S.settings;
-  return '<form class="form" onsubmit="event.preventDefault();saveGeneral()"><div class="card"><h2>Guests and money</h2><div class="fields">' +
+  return '<form class="form" onsubmit="event.preventDefault();saveGeneral()"><div class="note">Tap a section to open it. One Save button at the bottom saves all of them.</div>' +
+    fold('g-money', 'Guests and money', '<div class="fields">' +
     '<label class="check" style="grid-column:1/-1"><input type="checkbox" id="g-caution"' + (s.cautionEnabled ? ' checked' : '') + '>Collect a refundable caution fee at check-in</label>' +
     field('Caution fee (₦)', input('g-camt', s.cautionAmount, 'inputmode="numeric"')) +
     field('Check-in time', input('g-in', s.checkInTime, 'type="time"')) + field('Check-out time', input('g-out', s.checkOutTime, 'type="time"')) +
     field('Hold reservations for (hours)', input('g-hold', s.holdHours, 'type="number" min="0"'), '', 'After the expected arrival time') +
     field('Approval needed above (₦)', input('g-limit', s.approvalLimit, 'inputmode="numeric"'), '', 'Expenses and purchases above this wait for you') +
-    '</div></div><div class="card"><h2>Places</h2>' + field('Common areas (one per line)', '<textarea id="g-areas">' + esc((s.commonAreas || []).join('\n')) + '</textarea>', '', 'Used for maintenance and assets, e.g. Generator house, Reception') + '</div>' +
-    '<div class="card"><h2>Cleaning checklists</h2><div class="fields">' + field('Turnover (after check-out)', '<textarea id="g-turn" rows="10">' + esc((s.turnoverSteps || []).join('\n')) + '</textarea>', '', 'One step per line. Steps with the word "kitchen" only show for kitchen rooms.') +
+    '</div>', true) +
+    fold('g-places', 'Places', field('Common areas (one per line)', '<textarea id="g-areas">' + esc((s.commonAreas || []).join('\n')) + '</textarea>', '', 'Used for maintenance and assets, e.g. Generator house, Reception')) +
+    fold('g-clean', 'Cleaning checklists', '<div class="fields">' + field('Turnover (after check-out)', '<textarea id="g-turn" rows="10">' + esc((s.turnoverSteps || []).join('\n')) + '</textarea>', '', 'One step per line. Steps with the word "kitchen" only show for kitchen rooms.') +
     field('Daily service (guest staying)', '<textarea id="g-daily" rows="10">' + esc((s.dailySteps || []).join('\n')) + '</textarea>') +
-    '<label class="check" style="grid-column:1/-1"><input type="checkbox" id="g-dailyon"' + (s.dailyCleaning !== false ? ' checked' : '') + '>Create a daily cleaning task for every guest staying more than one night</label></div></div>' +
-    '<div class="card"><h2>Laundry</h2>' + field('Linen and towel types (one per line)', '<textarea id="g-linen" rows="6">' + esc((s.linenItems || []).join('\n')) + '</textarea>', '', 'Counted when laundry is sent out and when it comes back') + '</div>' +
-    '<div class="card"><h2>Guest privacy</h2>' + field('Delete guest ID photos after (months)', input('g-idm', s.idPhotoMonths == null ? 6 : s.idPhotoMonths, 'type="number" min="0"'), '', 'Counted from check-out. 0 = keep forever. Guest names and ID numbers stay; only the photos are removed.') + '</div>' +
+    '<label class="check" style="grid-column:1/-1"><input type="checkbox" id="g-dailyon"' + (s.dailyCleaning !== false ? ' checked' : '') + '>Create a daily cleaning task for every guest staying more than one night</label></div>') +
+    fold('g-laundry', 'Laundry', field('Linen and towel types (one per line)', '<textarea id="g-linen" rows="6">' + esc((s.linenItems || []).join('\n')) + '</textarea>', '', 'Counted when laundry is sent out and when it comes back')) +
+    fold('g-privacy', 'Guest privacy', field('Delete guest ID photos after (months)', input('g-idm', s.idPhotoMonths == null ? 6 : s.idPhotoMonths, 'type="number" min="0"'), '', 'Counted from check-out. 0 = keep forever. Guest names and ID numbers stay; only the photos are removed.')) +
     '<div class="form-actions"><button class="btn primary" type="submit">Save settings</button></div></form>';
 }
 function lines(id) { return val(id).split('\n').map(function (l) { return l.trim(); }).filter(Boolean); }

@@ -248,3 +248,13 @@ Do this once, after publishing the rules:
 - **Colour scheme picker:** one swatch shows the active scheme; tap it to pick Colourful (now the default), Black & white or Black & cream. In Colourful, each section has its own colour (`--accent` per `data-view` in styles.css) used by the header, buttons, tabs, cards, figure tiles and dialogs; the top bar is a gradient.
 - **My account page** (tap your name or initials): profile (read only), colour scheme, dark mode, text size, start page (per device), change password, sign out, owner/manager shortcuts, app version and "Check for update".
 - Room board: back-row tiles now line up with the front tiles (left edge over room 1, right edge over room 2, equal gaps).
+
+## 17. v2.2.0: less clutter
+- **Inventory:** header is "Store ▾" (Receive stock, Issue supplies, Stock count) + Sell item. Two figure boxes (To reorder; Sales this month with profit). Tabs: Supplies, For sale, Sales, More (Usage per night, Movements, Room item lists as small sub-tabs).
+- **Room board:** 3 figure boxes (Occupied, Today in/out, Unconfirmed payments). The colour key under the building now carries the counts; the separate status pills only show in Cards layout. On phones the building comes first.
+- **Today:** Rooms card removed; Recent activity shows 5 entries with "See all".
+- **Admin settings → General:** sections fold open/closed; one Save button still saves all.
+- **Reports:** 4 figure boxes (average rate moved into Occupancy); CSV downloads under "Export ▾"; By room table folds (earnings per room per night shown on its header).
+- **Maintenance / Payments:** figure boxes only on the first tab (Jobs / Unconfirmed).
+- **My account:** one column; profile with password, sign-out (and Admin settings for the owner) together; version line at the bottom.
+- Helpers in js/core.js: `actionMenu()`, `subTabs()`, `fold()`.

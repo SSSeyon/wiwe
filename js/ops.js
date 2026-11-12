@@ -190,6 +190,7 @@ VIEWS.maintenance = {
       stat('Rooms out of order', S.data.rooms.filter(function (r) { return r.status === 'ooo'; }).length, '') +
       stat('Service due (7 days)', serviceDue(7).length, serviceDue(0).length + ' overdue', serviceDue(0).length ? 'warn' : '') +
       stat('Repair spend this month', money(sum(S.data.jobs.filter(function (j) { return j.cost && dateStr(new Date(j.doneAt || j.createdAt)).slice(0, 7) === todayStr().slice(0, 7); }), function (j) { return j.cost; })), '') + '</section>';
+    if (tab !== 'jobs') html = ''; // figures describe jobs, so show them on the Jobs tab only
     html += tabs('maintenance', [['jobs', 'Jobs'], ['assets', 'Assets (' + S.data.assets.filter(function (a) { return a.status !== 'retired'; }).length + ')'], ['schedule', 'Service schedule'], ['vendors', 'Vendors']]);
     if (tab === 'jobs') {
       var open = sortBy(openJobs(), function (j) { return ({ urgent: 0, high: 1, normal: 2, low: 3 }[j.priority] || 2) * 1e13 + j.createdAt; });
@@ -377,24 +378,27 @@ VIEWS.inventory = {
   actions: function () {
     var sell = '<button class="btn primary" type="button" onclick="openSell()">Sell item</button>';
     if (!has('manager')) return sell;
-    return '<button class="btn" type="button" onclick="openStockCount()">Stock count</button><button class="btn" type="button" onclick="openIssue()">Issue supplies</button><button class="btn" type="button" onclick="openReceive()">+ Receive stock</button>' + sell;
+    return actionMenu('Store', [['+ Receive stock', 'openReceive()'], ['Issue supplies', 'openIssue()'], ['Stock count', 'openStockCount()']]) + sell;
   },
   render: function () {
-    var mgr = has('manager'), list = mgr ? [['supplies', 'Supplies (for use)'], ['sale', 'For sale'], ['sales', 'Sales'], ['usage', 'Usage per night'], ['moves', 'Movements'], ['rooms', 'Room item lists']] : [['sale', 'For sale'], ['sales', 'Sales']];
-    var tab = curTab('inventory', mgr ? 'supplies' : 'sale'); if (!list.some(function (t) { return t[0] === tab; })) tab = list[0][0];
+    var mgr = has('manager'), list = mgr ? [['supplies', 'Supplies'], ['sale', 'For sale'], ['sales', 'Sales'], ['more', 'More']] : [['sale', 'For sale'], ['sales', 'Sales']];
+    var tab = curTab('inventory', mgr ? 'supplies' : 'sale');
+    if (['usage', 'moves', 'rooms'].indexOf(tab) >= 0) { S.tab.invMore = tab; tab = S.tab.inventory = 'more'; }
+    if (!list.some(function (t) { return t[0] === tab; })) tab = list[0][0];
+    var more = tab === 'more' ? (S.tab.invMore || 'usage') : '';
     var sup = invItems('supply'), forSale = invItems('sale'), since = Date.now() - 30 * 86400000, month = todayStr().slice(0, 7);
     var issued = S.data.moves.filter(function (m) { return m.type === 'issue' && m.at > since; });
     var sales = S.data.moves.filter(function (m) { return m.type === 'sale'; });
     var salesMonth = sales.filter(function (m) { return dateStr(new Date(m.at)).slice(0, 7) === month; });
     var nights = sum(S.data.stays.filter(function (s) { return (s.status === 'checked_out' && s.checkedOutAt > since) || s.status === 'checked_in'; }), function (s) { return s.nights; });
     var lowSup = sup.filter(function (i) { return Number(i.qty) <= Number(i.reorderLevel || 0); }), lowSale = forSale.filter(function (i) { return Number(i.qty) <= Number(i.reorderLevel || 0); });
+    var low = (mgr ? lowSup.length : 0) + lowSale.length;
     var html = '<section class="grid-stats">' +
-      (mgr ? stat('Supplies low', lowSup.length + ' of ' + sup.length, 'At or below reorder level', lowSup.length ? 'warn' : '') : '') +
-      stat('For-sale items low', lowSale.length + ' of ' + forSale.length, 'At or below reorder level', lowSale.length ? 'warn' : '') +
-      stat('Sales this month', money(sum(salesMonth, function (m) { return m.total; })), salesMonth.length + ' sales') +
-      (mgr ? stat('Sales profit this month', money(sum(salesMonth, function (m) { return m.total - (m.unitCost || 0) * -m.qty; })), 'Sale price minus cost') : '') +
+      stat('To reorder', low, (mgr ? lowSup.length + ' supplies · ' : '') + lowSale.length + ' for sale', low ? 'warn' : '') +
+      stat('Sales this month', money(sum(salesMonth, function (m) { return m.total; })), salesMonth.length + ' sales' + (mgr ? ' · ' + money(sum(salesMonth, function (m) { return m.total - (m.unitCost || 0) * -m.qty; })) + ' profit' : '')) +
       '</section>';
     html += tabs('inventory', list);
+    if (more) { html += subTabs('invMore', [['usage', 'Usage per night'], ['moves', 'Movements'], ['rooms', 'Room item lists']]); tab = more; }
     if (tab === 'supplies' || tab === 'sale') {
       var items = tab === 'sale' ? forSale : sup, sale = tab === 'sale';
       html += mgr ? '<div class="row"><button class="btn small" type="button" onclick="openItem(\'\',\'' + (sale ? 'sale' : 'supply') + '\')">+ New ' + (sale ? 'item for sale' : 'supply') + '</button></div>' : '';

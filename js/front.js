@@ -19,20 +19,18 @@ VIEWS.board = {
     var ready = counts.ready || 0;
     var up = unconfirmedPayments();
     var al = alerts();
-    var html = '<section class="grid-stats" aria-label="Today at a glance">' +
-      stat('Occupancy', occ + ' / ' + rooms.length, Math.round(occ / rooms.length * 100) + '% of rooms') +
-      stat('Arrivals today', arrivals.length, arrivals.map(function (s) { return s.roomNo; }).join(', ') || 'None expected') +
-      stat('Departures today', departures.length, departures.map(function (s) { return s.roomNo; }).join(', ') || 'None due') +
-      stat('Rooms ready', ready, (counts.dirty || 0) + ' dirty · ' + ((counts.cleaning || 0) + (counts.inspect || 0)) + ' being cleaned') +
+    var html = '<section class="grid-stats board-stats" aria-label="Today at a glance">' +
+      stat('Occupied', occ + ' / ' + rooms.length, ready + ' ready · ' + ((counts.dirty || 0) + (counts.cleaning || 0) + (counts.inspect || 0)) + ' to clean') +
+      stat('Today', arrivals.length + ' in · ' + departures.length + ' out', (arrivals.length ? 'Arriving ' + arrivals.map(function (s) { return s.roomNo; }).join(', ') : 'No arrivals') + (departures.length ? ' · Leaving ' + departures.map(function (s) { return s.roomNo; }).join(', ') : '')) +
       stat('Unconfirmed payments', up.length, up.length ? 'Waiting for owner' : 'All matched', up.length ? 'warn' : '') +
       '</section>';
     var layout = boardLayout();
-    html += '<div class="split"><section class="wide" aria-label="Rooms">' +
+    html += '<div class="split board-split"><section class="wide board-main" aria-label="Rooms">' +
       '<div class="row between"><div class="legend"><strong style="font-family:var(--font-display);font-size:18px;margin-right:6px">' + rooms.length + ' rooms</strong>' +
-      Object.keys(ROOM_STATUS).map(function (k) { return pill(ROOM_STATUS[k].label + ' · ' + (counts[k] || 0), ROOM_STATUS[k].cls); }).join('') + '</div>' +
+      (layout === '3d' ? '' : Object.keys(ROOM_STATUS).map(function (k) { return counts[k] ? pill(ROOM_STATUS[k].label + ' · ' + counts[k], ROOM_STATUS[k].cls) : ''; }).join('')) + '</div>' +
       '<div class="seg" role="group" aria-label="Board layout">' + [['3d', 'Building'], ['grid', 'Cards']].map(function (o) { return '<button type="button" class="' + (layout === o[0] ? 'on' : '') + '" aria-pressed="' + (layout === o[0]) + '" onclick="setBoardLayout(\'' + o[0] + '\')">' + o[1] + '</button>'; }).join('') + '</div></div>' +
       (layout === '3d' ? building3dHtml() : '<div class="rooms">' + rooms.map(roomCard).join('') + '</div>') + '</section>' +
-      '<aside class="narrow"><div class="card"><h2>Needs attention</h2><div class="stack">' + alertList(al, 8) + '</div></div>' +
+      '<aside class="narrow board-side"><div class="card"><h2>Needs attention</h2><div class="stack">' + alertList(al, 8) + '</div></div>' +
       '<div class="card"><h2>Arrivals and departures</h2>' + movesList(arrivals, departures) + '</div></aside></div>';
     return html;
   }
@@ -492,7 +490,7 @@ VIEWS.payments = {
     var tab = curTab('payments', 'unconfirmed');
     var list = S.data.payments.filter(function (p) { return tab === 'all' || p.status === tab; });
     var t = todayStr(), todays = S.data.payments.filter(function (p) { return dateStr(new Date(p.at)) === t && p.status !== 'void' && p.amount > 0; });
-    var html = '<section class="grid-stats">' +
+    var html = tab !== 'unconfirmed' ? tabs('payments', [['unconfirmed', 'Unconfirmed'], ['confirmed', 'Confirmed'], ['rejected', 'Not received'], ['all', 'All']]) : '<section class="grid-stats">' +
       stat('Recorded today', money(sum(todays, function (p) { return p.amount; })), todays.length + ' payments') +
       stat('Confirmed today', money(sum(todays.filter(function (p) { return p.status === 'confirmed'; }), function (p) { return p.amount; })), 'Matched to bank') +
       stat('Waiting for owner', unconfirmedPayments().length, money(sum(unconfirmedPayments(), function (p) { return p.amount; })), unconfirmedPayments().length ? 'warn' : '') +

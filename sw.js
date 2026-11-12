@@ -1,5 +1,5 @@
 // Bump CACHE when you deploy changes so phones pick up the new version.
-const CACHE = 'wiwe-v2.1.0';
+const CACHE = 'wiwe-v2.2.0';
 const SHELL = ['./', 'index.html', 'styles.css', 'config.js', 'js/core.js', 'js/front.js', 'js/ops.js', 'js/admin.js', 'js/building.js', 'js/shifts.js', 'manifest.json', 'img/icon-192.png', 'img/icon-512.png', 'img/logo.png', 'img/building.jpg'];
 
 self.addEventListener('install', e => {
