@@ -1,4 +1,4 @@
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 
 /* =========================================================
    Constants
@@ -64,7 +64,7 @@ const S = {
   user: null, me: null, view: null, params: {}, tab: {},
   settings: Object.assign({}, DEFAULT_SETTINGS),
   data: { rooms: [], roomTypes: [], stays: [], payments: [], tasks: [], jobs: [], assets: [], vendors: [], items: [], moves: [], expenses: [], incidents: [], users: [] },
-  unsub: [], pending: false, fromCache: true, online: navigator.onLine,
+  unsub: [], meta: {}, pending: false, fromCache: true, online: navigator.onLine,
   adminUntil: 0, photoCache: {}, form: {}
 };
 
@@ -212,7 +212,7 @@ function validPassword(p) { return String(p || '').length >= 6; }
 
 function showLogin(mode, msg) {
   $('boot').classList.add('hidden'); $('app').classList.add('hidden'); $('login').classList.remove('hidden');
-  var head = '<div class="brand"><div class="logo-mark">W</div><div class="brand-text"><strong>Wiwe Apartments</strong><span>Operations</span></div></div>';
+  var head = '<img class="login-photo" src="img/building.jpg" alt="Wiwe Apartments building, Sowhe, Badagry"><img class="login-logo logo-img" src="img/logo.png" alt="Wiwe Apartments"><div class="muted" style="text-align:center;margin-top:-8px">Operations</div>';
   if (mode === 'config') {
     $('login').innerHTML = '<div class="login-card">' + head + '<h2>Almost there</h2><p class="muted">Add your Firebase project settings to <strong>config.js</strong>, then reload. See HANDOVER.md for the steps.</p></div>';
     return;
@@ -295,13 +295,18 @@ async function signOut() { if (!confirm('Sign out of Wiwe?')) return; stopListen
 /* =========================================================
    Live data
    ========================================================= */
-function stopListeners() { S.unsub.forEach(function (u) { try { u(); } catch (e) {} }); S.unsub = []; }
+function stopListeners() { S.unsub.forEach(function (u) { try { u(); } catch (e) {} }); S.unsub = []; S.meta = {}; }
 function listen(key, query) {
   var u = query.onSnapshot({ includeMetadataChanges: true }, function (snap) {
     S.data[key] = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
-    S.pending = snap.metadata.hasPendingWrites; S.fromCache = snap.metadata.fromCache;
+    // Track each list separately; the badge shows the combined state (one list's old
+    // "pending" flag must not stick after another list reports it is up to date)
+    S.meta[key] = { pending: snap.metadata.hasPendingWrites, cache: snap.metadata.fromCache };
+    var ks = Object.keys(S.meta);
+    S.pending = ks.some(function (k) { return S.meta[k].pending; });
+    S.fromCache = ks.some(function (k) { return S.meta[k].cache; });
     paintSync(); scheduleRender();
-  }, function (e) { console.warn(key, e.message); });
+  }, function (e) { console.warn(key, e.message); delete S.meta[key]; paintSync(); });
   S.unsub.push(u);
 }
 function startListeners() {
@@ -337,6 +342,10 @@ window.addEventListener('online', paintSync); window.addEventListener('offline',
    ========================================================= */
 function roomType(room) { return byId(S.data.roomTypes, room && room.typeId) || { name: '—', rate: 0, items: [] }; }
 function roomsSorted() { return sortBy(S.data.rooms.filter(function (r) { return !r.archived; }), function (r) { return r.order != null ? r.order : +r.number || 0; }); }
+var FLOOR_NAMES = ['Ground floor', 'First floor', 'Second floor', 'Third floor', 'Fourth floor'];
+function floorName(i) { return FLOOR_NAMES[i] || ('Floor ' + i); }
+// Floor saved on the room, or worked out from its position: 5 rooms per floor (101–105 ground, 106–110 first…)
+function roomFloor(r) { if (r.floor != null && r.floor !== '') return +r.floor; var i = roomsSorted().indexOf(r); return Math.floor(Math.max(0, i) / 5); }
 function roomByNo(no) { return S.data.rooms.find(function (r) { return r.number === no; }); }
 function stayOf(room) { return room && room.currentStayId ? byId(S.data.stays, room.currentStayId) : null; }
 function staysByStatus(st) { return S.data.stays.filter(function (s) { return s.status === st; }); }

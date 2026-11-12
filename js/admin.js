@@ -177,10 +177,11 @@ function saveGeneral() {
 }
 
 function adminRooms() {
-  var html = '<div class="card"><div class="card-head"><h2>Room types and rates</h2><button class="btn small" type="button" onclick="openRoomType()">+ Room type</button></div>' +
-    S.data.roomTypes.map(function (t) { return '<div class="list-row clickable" onclick="openRoomType(\'' + t.id + '\')"><span class="main-t"><strong>' + esc(t.name) + (t.hasKitchen ? ' · kitchen' : '') + '</strong><span>' + (t.items || []).length + ' items checked at check-out · ' + S.data.rooms.filter(function (r) { return r.typeId === t.id && !r.archived; }).length + ' rooms</span></span><strong class="money">' + money(t.rate) + ' / night</strong></div>'; }).join('') + '</div>';
-  html += '<div class="card"><div class="card-head"><h2>Rooms</h2><button class="btn small" type="button" onclick="openRoomEdit()">+ Room</button></div><div class="table-wrap"><table><thead><tr><th>Order</th><th>Room</th><th>Type</th><th>Status</th></tr></thead><tbody>' +
-    roomsSorted().map(function (r) { return '<tr class="clickable" onclick="openRoomEdit(\'' + r.id + '\')"><td>' + (r.order || '') + '</td><td><strong>' + esc(r.number) + '</strong></td><td>' + esc(roomType(r).name) + '</td><td>' + pill(ROOM_STATUS[r.status || 'ready'].label, ROOM_STATUS[r.status || 'ready'].cls) + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
+  var html = '<div class="note">Two steps: <strong>1. Room types</strong> are price categories (rate + item checklist). <strong>2. Rooms</strong> are the actual units that appear on the Room board. Each room uses one type, so to change a room\'s price, change its type.</div>';
+  html += '<div class="card"><div class="card-head"><h2>1 · Room types (price categories)</h2><button class="btn small" type="button" onclick="openRoomType()">+ Room type</button></div>' +
+    S.data.roomTypes.map(function (t) { var n = S.data.rooms.filter(function (r) { return r.typeId === t.id && !r.archived; }).length; return '<div class="list-row clickable" onclick="openRoomType(\'' + t.id + '\')"><span class="main-t"><strong>' + esc(t.name) + (t.hasKitchen ? ' · kitchen' : '') + '</strong><span>' + (t.items || []).length + ' items checked at check-out · ' + (n ? n + ' room' + (n > 1 ? 's' : '') : '<span style="color:var(--bad)">no rooms use this type yet</span>') + '</span></span><span class="row"><strong class="money">' + money(t.rate) + ' / night</strong>' + (n ? '' : '<button class="btn small danger" type="button" onclick="event.stopPropagation();deleteRoomType(\'' + t.id + '\')">Delete</button>') + '</span></div>'; }).join('') + '</div>';
+  html += '<div class="card"><div class="card-head"><h2>2 · Rooms (shown on the Room board)</h2><button class="btn small" type="button" onclick="openRoomEdit()">+ Room</button></div><div class="table-wrap"><table><thead><tr><th>Floor</th><th>Room</th><th>Type</th><th class="right">Rate</th><th>Status</th></tr></thead><tbody>' +
+    roomsSorted().map(function (r) { return '<tr class="clickable" onclick="openRoomEdit(\'' + r.id + '\')"><td>' + esc(floorName(roomFloor(r))) + '</td><td><strong>' + esc(r.number) + '</strong></td><td>' + esc(roomType(r).name) + '</td><td class="right money">' + money(roomType(r).rate) + '</td><td>' + pill(ROOM_STATUS[r.status || 'ready'].label, ROOM_STATUS[r.status || 'ready'].cls) + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
   return html;
 }
 function openRoomType(id) {
@@ -197,18 +198,25 @@ function saveRoomType(id) {
   var d = { name: val('rt-name'), rate: num(val('rt-rate')), hasKitchen: val('rt-kit'), items: items, updatedAt: Date.now() };
   var old = byId(S.data.roomTypes, id);
   (id ? db.collection('roomTypes').doc(id).set(d, { merge: true }) : db.collection('roomTypes').add(Object.assign(d, { createdAt: Date.now() }))).catch(fail);
-  audit('room_type_saved', 'roomType', id || '', d.name + ' · ' + money(d.rate) + (old && old.rate !== d.rate ? ' (was ' + money(old.rate) + ')' : '')); closeModal(); toast('Saved');
+  audit('room_type_saved', 'roomType', id || '', d.name + ' · ' + money(d.rate) + (old && old.rate !== d.rate ? ' (was ' + money(old.rate) + ')' : '')); closeModal(); toast(id ? 'Saved' : 'Type saved. Now pick which rooms use it under "2 · Rooms".');
+}
+function deleteRoomType(id) {
+  var t = byId(S.data.roomTypes, id);
+  if (S.data.rooms.some(function (r) { return r.typeId === id && !r.archived; })) return toast('Rooms still use this type', true);
+  if (!confirm('Delete room type "' + t.name + '"?')) return;
+  db.collection('roomTypes').doc(id).delete().catch(fail); audit('room_type_deleted', 'roomType', id, t.name); toast('Deleted');
 }
 function openRoomEdit(id) {
   var r = byId(S.data.rooms, id) || {};
   var b = '<form class="form" onsubmit="event.preventDefault();saveRoomEdit(\'' + (id || '') + '\')"><div class="fields">' +
     field('Room name / number', input('re-no', r.number, 'required')) + field('Type', '<select id="re-type">' + S.data.roomTypes.map(function (t) { return '<option value="' + t.id + '"' + (t.id === r.typeId ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join('') + '</select>') +
-    field('Order on board', input('re-order', r.order || S.data.rooms.length + 1, 'type="number"')) +
+    field('Floor', '<select id="re-floor">' + opts(FLOOR_NAMES.map(function (n, i) { return { v: i, l: n }; }), id ? roomFloor(r) : Math.min(FLOOR_NAMES.length - 1, Math.floor(S.data.rooms.length / 5))) + '</select>') +
+    field('Position on floor (1 = left)', input('re-order', r.order || S.data.rooms.length + 1, 'type="number"'), '', 'Rooms are drawn left to right in this order') +
     '</div><div class="form-actions">' + (id ? '<button type="button" class="btn danger" onclick="archiveRoom(\'' + id + '\')">Remove room</button>' : '') + '<button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Save</button></div></form>';
   openModal(id ? 'Room ' + r.number : 'New room', b);
 }
 function saveRoomEdit(id) {
-  var d = { number: val('re-no'), typeId: val('re-type'), order: num(val('re-order')) };
+  var d = { number: val('re-no'), typeId: val('re-type'), order: num(val('re-order')), floor: num(val('re-floor')) };
   if (S.data.rooms.some(function (r) { return r.number === d.number && r.id !== id && !r.archived; })) return toast('Another room already has that name', true);
   (id ? db.collection('rooms').doc(id).update(d) : db.collection('rooms').add(Object.assign(d, { status: 'ready', createdAt: Date.now() }))).catch(fail);
   audit('room_saved', 'room', id || '', d.number); closeModal(); toast('Saved');

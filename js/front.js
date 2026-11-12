@@ -26,15 +26,41 @@ VIEWS.board = {
       stat('Rooms ready', ready, (counts.dirty || 0) + ' dirty · ' + ((counts.cleaning || 0) + (counts.inspect || 0)) + ' being cleaned') +
       stat('Unconfirmed payments', up.length, up.length ? 'Waiting for owner' : 'All matched', up.length ? 'warn' : '') +
       '</section>';
+    var layout = boardLayout();
     html += '<div class="split"><section class="wide" aria-label="Rooms">' +
-      '<div class="legend"><strong style="font-family:var(--font-display);font-size:18px;margin-right:6px">' + rooms.length + ' rooms</strong>' +
+      '<div class="row between"><div class="legend"><strong style="font-family:var(--font-display);font-size:18px;margin-right:6px">' + rooms.length + ' rooms</strong>' +
       Object.keys(ROOM_STATUS).map(function (k) { return pill(ROOM_STATUS[k].label + ' · ' + (counts[k] || 0), ROOM_STATUS[k].cls); }).join('') + '</div>' +
-      '<div class="rooms">' + rooms.map(roomCard).join('') + '</div></section>' +
+      '<div class="seg" role="group" aria-label="Board layout"><button type="button" class="' + (layout === 'floors' ? 'on' : '') + '" aria-pressed="' + (layout === 'floors') + '" onclick="setBoardLayout(\'floors\')">Building</button><button type="button" class="' + (layout === 'grid' ? 'on' : '') + '" aria-pressed="' + (layout === 'grid') + '" onclick="setBoardLayout(\'grid\')">Cards</button></div></div>' +
+      (layout === 'floors' ? buildingMap(rooms) : '<div class="rooms">' + rooms.map(roomCard).join('') + '</div>') + '</section>' +
       '<aside class="narrow"><div class="card"><h2>Needs attention</h2><div class="stack">' + alertList(al, 8) + '</div></div>' +
       '<div class="card"><h2>Arrivals and departures</h2>' + movesList(arrivals, departures) + '</div></aside></div>';
     return html;
   }
 };
+function boardLayout() { try { return localStorage.getItem('wiwe_board') || 'floors'; } catch (e) { return 'floors'; } }
+function setBoardLayout(v) { try { localStorage.setItem('wiwe_board', v); } catch (e) {} render(); }
+// The building drawn floor by floor, top floor first, rooms left to right
+function buildingMap(rooms) {
+  var floors = {};
+  rooms.forEach(function (r) { var f = roomFloor(r); (floors[f] = floors[f] || []).push(r); });
+  var keys = Object.keys(floors).map(Number).sort(function (a, b) { return b - a; });
+  return '<div class="building" aria-label="Building map">' +
+    '<div class="roof" aria-hidden="true"></div>' +
+    keys.map(function (f) {
+      return '<div class="floor"><div class="floor-name">' + esc(floorName(f)) + '</div><div class="floor-rooms">' + floors[f].map(roomTile).join('') + '</div></div>';
+    }).join('') +
+    '<div class="ground-line" aria-hidden="true"></div></div>';
+}
+function roomTile(r) {
+  var st = displayStatus(r), s = stayOf(r), line = '', flag = false;
+  if (st === 'occupied' && s) { line = s.guestName.split(' ')[0]; flag = isOverstay(s) || dueOutToday(s) || (s.balance || 0) > 0; }
+  else if (st === 'reserved') { var rv = reservationToday(r); line = rv ? rv.guestName.split(' ')[0] : ''; }
+  else if (st === 'ooo') line = 'Repair';
+  return '<button type="button" class="tile ' + ROOM_STATUS[st].cls + '" onclick="openRoom(\'' + r.id + '\')" aria-label="Room ' + esc(r.number) + ', ' + ROOM_STATUS[st].label + (line ? ', ' + esc(line) : '') + '">' +
+    (flag ? '<span class="tile-flag" aria-hidden="true">!</span>' : '') +
+    '<span class="tile-no">' + esc(r.number) + '</span><span class="tile-st">' + ROOM_STATUS[st].label + '</span>' + (line ? '<span class="tile-line">' + esc(line) + '</span>' : '') +
+    '<span class="tile-type">' + esc(roomType(r).name) + '</span></button>';
+}
 function stat(label, value, sub, cls) { return '<div class="stat ' + (cls || '') + '"><span class="label">' + esc(label) + '</span><span class="value">' + esc(value) + '</span><span class="sub">' + esc(sub || '') + '</span></div>'; }
 function roomCard(r) {
   var st = displayStatus(r), type = roomType(r), s = stayOf(r), l1 = '', l2 = '', flag = '';

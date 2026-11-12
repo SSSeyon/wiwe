@@ -1,6 +1,6 @@
 # Wiwe Apartments: Operations app · Handover
 
-Version 1.0.0 · Vanilla HTML/CSS/JS PWA · GitHub Pages + Firebase (Auth + Firestore)
+Version 1.2.0 · Vanilla HTML/CSS/JS PWA · GitHub Pages + Firebase (Auth + Firestore)
 
 ## 1. Go-live checklist
 
@@ -94,3 +94,16 @@ Timestamps are epoch milliseconds. Dates are `YYYY-MM-DD` strings in local (Lago
   - Payroll
   - Prepaid meter top-up log per room
   - A daily summary pushed to the owner
+
+## 7. Branding and room board (v1.2.0)
+
+- **Colours:** black from the Wiwe logo and cream from the building (`--cream #F4E6B8`). Tokens live at the top of `styles.css`.
+- **Images** in `img/`:
+  - `logo.png`: the Wiwe logo, black on a transparent background
+  - `icon-192.png` and `icon-512.png`: app icons (logo on cream)
+  - `building.jpg`: the exterior, shown on the login screen
+- **Room board** has two layouts, Building (default) and Cards, and remembers the choice per device.
+  - **Building** draws the block floor by floor (top floor first), with rooms left to right.
+  - Each room has a `floor` (0 = Ground). If it isn't set, the floor comes from the room's position: 5 rooms per floor, so 101–105 Ground, 106–110 First, 111–115 Second.
+  - Set the floor and position in Admin settings → Rooms and rates → 2 · Rooms.
+- **Room types vs rooms:** a room type is a price category. Only **rooms** appear on the board. A type that no room uses can be deleted.
