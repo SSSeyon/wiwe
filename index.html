@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Wiwe Apartments</title>
-<meta name="theme-color" content="#FFFFFF">
+<meta name="theme-color" content="#4F46E5">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="img/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="img/icon-192.png">
@@ -29,10 +29,13 @@
 <div id="login" class="login hidden"></div>
 
 <div class="corner" id="corner" aria-label="Appearance">
-  <div class="theme-pick" role="radiogroup" aria-label="Colour theme">
-    <button type="button" role="radio" class="sw sw-mono" data-t="mono" onclick="setTheme('mono')" title="Black and white" aria-label="Black and white theme"></button>
-    <button type="button" role="radio" class="sw sw-cream" data-t="cream" onclick="setTheme('cream')" title="Black and cream" aria-label="Black and cream theme"></button>
-    <button type="button" role="radio" class="sw sw-colour" data-t="colour" onclick="setTheme('colour')" title="Colourful" aria-label="Colourful theme"></button>
+  <div class="theme-pick" id="themePick">
+    <button type="button" class="sw sw-current" id="themeCurrent" onclick="toggleThemeMenu()" aria-haspopup="true" aria-expanded="false" title="Colour scheme" aria-label="Colour scheme"></button>
+    <div class="theme-menu hidden" id="themeMenu" role="radiogroup" aria-label="Colour scheme">
+      <button type="button" role="radio" class="tm-opt" data-t="colour" onclick="setTheme('colour')"><span class="sw sw-colour"></span>Colourful</button>
+      <button type="button" role="radio" class="tm-opt" data-t="mono" onclick="setTheme('mono')"><span class="sw sw-mono"></span>Black &amp; white</button>
+      <button type="button" role="radio" class="tm-opt" data-t="cream" onclick="setTheme('cream')"><span class="sw sw-cream"></span>Black &amp; cream</button>
+    </div>
   </div>
   <button type="button" class="dark-switch" id="darkSwitch" role="switch" aria-checked="false" aria-label="Dark mode" title="Dark mode" onclick="toggleDark()"><span class="knob" id="darkIcon"></span></button>
 </div>
@@ -45,7 +48,6 @@
   </header>
   <div class="main">
     <header class="topbar">
-      <button class="btn small back-btn" id="backBtn" type="button" onclick="go('home')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Home</button>
       <div class="titles">
         <span class="eyebrow" id="pageEyebrow"></span>
         <h1 id="pageTitle"></h1>

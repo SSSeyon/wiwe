@@ -69,9 +69,6 @@ body.dark-mode[data-theme=cream] .logo-img{filter:invert(1) sepia(.35) brightnes
 
 /* ---------- corner: theme + dark mode (always visible) ---------- */
 .corner{position:fixed;top:12px;right:14px;z-index:90;display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:999px;padding:5px 6px 5px 8px;box-shadow:0 4px 16px -8px rgba(0,0,0,.35)}
-.theme-pick{display:flex;gap:5px}
-.sw{width:22px;height:22px;border-radius:999px;border:2px solid var(--card);outline:1px solid var(--border-strong);cursor:pointer;padding:0}
-.sw.on{outline:2px solid var(--text);outline-offset:1px}
 .sw-mono{background:linear-gradient(135deg,#111 50%,#fff 50%)}
 .sw-cream{background:linear-gradient(135deg,#161616 50%,#F4E6B8 50%)}
 .sw-colour{background:conic-gradient(#EF4444,#F59E0B,#84CC16,#10B981,#06B6D4,#6366F1,#EC4899,#EF4444)}
@@ -90,7 +87,6 @@ body.dark-mode[data-theme=cream] .logo-img{filter:invert(1) sepia(.35) brightnes
 .me .icon-btn{color:var(--side-text);width:38px;height:38px}
 .main{flex:1;min-width:0;display:flex;flex-direction:column;width:100%;max-width:1280px;margin:0 auto}
 .topbar{display:flex;align-items:flex-end;gap:12px;padding:22px 32px 8px;flex-wrap:wrap}
-.back-btn{align-self:center;padding-left:8px}
 .titles{display:flex;flex-direction:column;gap:3px;flex:1;min-width:180px}
 .eyebrow{font-size:12px;font-weight:600;letter-spacing:.08em;color:var(--dim);text-transform:uppercase}
 .titles h1{font-size:30px}
@@ -398,3 +394,80 @@ body.dark-mode .b3d-host{background:#1C2126}
 
 /* v2.0: login card needs an edge on white */
 .login-card{border:1px solid var(--border)}
+
+/* ===================== v2.1 ===================== */
+/* text size (Account settings) */
+html[data-size=small]{zoom:.92}
+html[data-size=large]{zoom:1.12}
+
+/* theme picker: one swatch showing the active scheme; click to choose */
+.theme-pick{position:relative;display:flex}
+.sw{display:inline-block;width:24px;height:24px;border-radius:999px;border:2px solid var(--card);outline:1px solid var(--border-strong);padding:0;flex-shrink:0}
+button.sw{cursor:pointer}
+.sw-current:hover,.sw-current[aria-expanded=true]{outline:2px solid var(--text)}
+.theme-menu{position:absolute;top:36px;right:-6px;min-width:190px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:6px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:2px}
+.tm-opt{display:flex;align-items:center;gap:10px;padding:9px 10px;border:none;background:none;border-radius:10px;cursor:pointer;font-size:14px;text-align:left;min-height:42px;color:var(--text)}
+.tm-opt:hover{background:var(--surface)}
+.tm-opt.on{font-weight:700;background:var(--surface)}
+.tm-opt.on::after{content:'✓';margin-left:auto}
+
+/* name / avatar opens Account settings */
+.me-btn{display:flex;align-items:center;gap:8px;background:none;border:none;padding:4px 8px 4px 4px;border-radius:999px;cursor:pointer;color:inherit;text-align:left}
+.me-btn:hover{background:var(--surface)}
+.acct-opts{display:flex;flex-wrap:wrap;gap:8px}
+.acct-opt{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;border:1px solid var(--border-strong);background:var(--card);cursor:pointer;font-weight:600;font-size:14px;min-height:44px;color:var(--text)}
+.acct-opt.on{border-color:var(--brand);outline:2px solid var(--brand);outline-offset:-1px}
+.acct-links{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+
+/* ---------- Colourful theme: colour through the whole app ---------- */
+body[data-theme=colour]{--accent:#4F46E5}
+body[data-theme=colour][data-view=today]{--accent:#D97706}
+body[data-theme=colour][data-view=board]{--accent:#4F46E5}
+body[data-theme=colour][data-view=shift]{--accent:#0284C7}
+body[data-theme=colour][data-view=stays]{--accent:#7C3AED}
+body[data-theme=colour][data-view=payments]{--accent:#059669}
+body[data-theme=colour][data-view=housekeeping]{--accent:#0891B2}
+body[data-theme=colour][data-view=maintenance]{--accent:#EA580C}
+body[data-theme=colour][data-view=inventory]{--accent:#65A30D}
+body[data-theme=colour][data-view=expenses]{--accent:#DC2626}
+body[data-theme=colour][data-view=reports]{--accent:#DB2777}
+body[data-theme=colour][data-view=admin]{--accent:#475569}
+body[data-theme=colour][data-view=account]{--accent:#7C3AED}
+body[data-theme=colour]{--brand:var(--accent);--brand-soft:color-mix(in srgb,var(--accent) 12%,#fff);--bg:color-mix(in srgb,var(--accent) 5%,#F7F7FC);--surface:color-mix(in srgb,var(--accent) 7%,#fff);--border:color-mix(in srgb,var(--accent) 16%,#E6E6EF)}
+body.dark-mode[data-theme=colour]{--brand:color-mix(in srgb,var(--accent) 55%,#fff);--on-brand:#0E1020;--brand-soft:color-mix(in srgb,var(--accent) 22%,#171A2E);--bg:color-mix(in srgb,var(--accent) 8%,#0E1020);--surface:color-mix(in srgb,var(--accent) 12%,#1A1D33);--border:color-mix(in srgb,var(--accent) 28%,#2B3050)}
+/* bar across the top */
+body[data-theme=colour] .appbar{background:linear-gradient(100deg,#4F46E5 0%,#7C3AED 45%,#DB2777 100%);border-bottom:none;color:#fff}
+body[data-theme=colour] .appbar .logo-img{filter:invert(1)}
+body[data-theme=colour] .appbar .me-text span{color:rgba(255,255,255,.8)}
+body[data-theme=colour] .appbar .me-btn:hover{background:rgba(255,255,255,.15)}
+body[data-theme=colour] .appbar .avatar{background:#fff;color:#4F46E5}
+body[data-theme=colour] .appbar .sync{background:rgba(255,255,255,.18);color:#fff}
+body[data-theme=colour] .appbar .sync.off{background:#FDE68A;color:#78350F}
+body[data-theme=colour] .login{background:linear-gradient(135deg,#4F46E5,#7C3AED 50%,#DB2777)}
+/* page header tinted with the section colour */
+body[data-theme=colour] .topbar{background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 14%,transparent),transparent);border-radius:0 0 22px 22px}
+body[data-theme=colour] .eyebrow{color:var(--accent)}
+body[data-theme=colour] .titles h1{color:color-mix(in srgb,var(--accent) 70%,var(--text))}
+body.dark-mode[data-theme=colour] .titles h1{color:color-mix(in srgb,var(--accent) 45%,#fff)}
+body[data-theme=colour] .btn.primary{background:var(--brand);border-color:var(--brand);box-shadow:0 6px 16px -8px var(--accent)}
+body[data-theme=colour] .btn:not(.primary):not(.danger):hover{border-color:var(--brand);color:var(--brand)}
+body[data-theme=colour] .tabs{border-bottom-color:color-mix(in srgb,var(--accent) 25%,transparent)}
+body[data-theme=colour] .tab.active{background:color-mix(in srgb,var(--accent) 12%,transparent);border-radius:10px 10px 0 0}
+body[data-theme=colour] .card{border-top:3px solid color-mix(in srgb,var(--accent) 70%,transparent)}
+body[data-theme=colour] .card .card{border-top-width:1px;border-top-color:var(--border)}
+body[data-theme=colour] .list-row.clickable:hover{background:var(--brand-soft)}
+body[data-theme=colour] .modal-card{border-top:5px solid var(--accent)}
+body[data-theme=colour] .modal-head h2{color:color-mix(in srgb,var(--accent) 75%,var(--text))}
+body[data-theme=colour] .note{background:var(--brand-soft);color:var(--text)}
+body[data-theme=colour] .avatar{background:linear-gradient(135deg,#4F46E5,#DB2777);color:#fff}
+/* figure tiles: each one its own colour */
+body[data-theme=colour] .grid-stats .stat:not(.warn):not(.dark){background:color-mix(in srgb,var(--sc,#4F46E5) 10%,var(--card));border-color:color-mix(in srgb,var(--sc,#4F46E5) 30%,transparent)}
+body[data-theme=colour] .grid-stats .stat:not(.warn):not(.dark) .value{color:color-mix(in srgb,var(--sc,#4F46E5) 80%,var(--text))}
+body.dark-mode[data-theme=colour] .grid-stats .stat:not(.warn):not(.dark) .value{color:color-mix(in srgb,var(--sc,#4F46E5) 45%,#fff)}
+body[data-theme=colour] .grid-stats .stat:nth-child(5n+1){--sc:#4F46E5}
+body[data-theme=colour] .grid-stats .stat:nth-child(5n+2){--sc:#059669}
+body[data-theme=colour] .grid-stats .stat:nth-child(5n+3){--sc:#D97706}
+body[data-theme=colour] .grid-stats .stat:nth-child(5n+4){--sc:#DB2777}
+body[data-theme=colour] .grid-stats .stat:nth-child(5n+5){--sc:#0891B2}
+body[data-theme=colour] .stat.dark{background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 50%,#DB2777));border:none;color:#fff}
+body[data-theme=colour] .stat.dark .label,body[data-theme=colour] .stat.dark .sub{color:#fff}

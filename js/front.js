@@ -107,12 +107,40 @@ function openRoom(id) {
   else if (st !== 'ooo') acts.push('<button class="btn" type="button" onclick="openReport(\'' + r.id + '\')">Report fault</button>');
   if (st === 'ooo' && has('manager', 'maintenance')) acts.push('<button class="btn primary" type="button" onclick="backInService(\'' + r.id + '\')">Back in service (needs cleaning)</button>');
   if (st === 'ready' && has('housekeeping', 'manager')) acts.push('<button class="btn danger" type="button" onclick="openUnexpectedUse(\'' + r.id + '\')">Found used with no guest</button>');
+  if (has('manager') && !s) acts.push('<button class="btn" type="button" onclick="openSetStatus(\'' + r.id + '\')">Set status…</button>');
   b += '<div class="row">' + acts.join('') + '</div>';
   var hist = S.data.stays.filter(function (x) { return x.roomId === r.id && x.status === 'checked_out'; }).slice(0, 5);
   if (hist.length) b += '<div><h3 style="font-size:15px;margin-bottom:6px">Recent stays</h3>' + hist.map(function (x) { return '<div class="list-row clickable" onclick="openStay(\'' + x.id + '\')"><span class="main-t"><strong>' + esc(x.guestName) + '</strong><span>' + fmtDate(x.checkInDate) + ' → ' + fmtDate(x.checkOutDate) + '</span></span><span class="money">' + money(x.total) + '</span></div>'; }).join('') + '</div>';
   var jobs = S.data.jobs.filter(function (j) { return j.roomId === r.id; }).slice(0, 5);
   if (jobs.length) b += '<div><h3 style="font-size:15px;margin-bottom:6px">Maintenance</h3>' + jobs.map(function (j) { return '<div class="list-row clickable" onclick="openJob(\'' + j.id + '\')"><span class="main-t"><strong>' + esc(j.title) + '</strong><span>' + fmtDate(j.createdAt) + '</span></span>' + jobPill(j) + '</div>'; }).join('') + '</div>';
   openModal('Room ' + r.number, b);
+}
+/* Manager override: set a room's status by hand, with a reason. Logged in the activity log. */
+var SET_STATUS_OPTIONS = [['ready', 'Ready (clean and inspected)'], ['dirty', 'Dirty (needs cleaning)'], ['cleaning', 'Cleaning'], ['inspect', 'Waiting inspection'], ['ooo', 'Out of order']];
+function openSetStatus(id) {
+  var r = byId(S.data.rooms, id); if (!r) return;
+  if (!has('manager')) return toast('Only a manager or the owner can set a status by hand', true);
+  if (stayOf(r)) return toast('A guest is checked in. Check them out or move them first.', true);
+  var b = '<form class="form" onsubmit="event.preventDefault();saveSetStatus(\'' + id + '\')">' +
+    '<div class="note">Normally the status changes by itself as staff check guests in and out, clean and inspect. Use this only to correct a mistake. It is recorded in the activity log with your name and reason.</div>' +
+    '<div class="fields">' + field('New status', '<select id="ss-status">' + SET_STATUS_OPTIONS.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === r.status ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select>') +
+    field('Reason', input('ss-reason', '', 'required minlength="4" placeholder="e.g. cleaned yesterday but not marked"'), 'full') + '</div>' +
+    '<div class="row"><button class="btn primary" type="submit">Save status</button><button class="btn" type="button" onclick="openRoom(\'' + id + '\')">Back</button></div></form>';
+  openModal('Set status · Room ' + r.number, b);
+}
+function saveSetStatus(id) {
+  var r = byId(S.data.rooms, id), st = val('ss-status'), why = val('ss-reason').trim();
+  if (!r || !ROOM_STATUS[st]) return;
+  if (why.length < 4) return toast('Give a reason', true);
+  if (st === r.status) return toast('The room is already ' + ROOM_STATUS[st].label, true);
+  var upd = { status: st, oooReason: st === 'ooo' ? why : '' };
+  if (st === 'ready') upd.readyAt = Date.now();
+  db.collection('rooms').doc(id).update(upd).then(function () {
+    var openTask = S.data.tasks.some(function (t) { return t.roomId === id && t.status !== 'done'; });
+    if (st === 'dirty' && !openTask) createTurnoverTask(r, null, 'Set to dirty by ' + S.me.name + ': ' + why);
+    audit('room_status_override', 'room', id, r.number + ': ' + ROOM_STATUS[displayStatus(r)].label + ' → ' + ROOM_STATUS[st].label + ' · ' + why);
+    closeModal(); toast('Room ' + r.number + ' set to ' + ROOM_STATUS[st].label);
+  }).catch(fail);
 }
 function backInService(id) {
   if (!confirm('Put this room back in service? It will go to "Dirty" so it gets cleaned and inspected first.')) return;

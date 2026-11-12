@@ -1,4 +1,4 @@
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.1.0';
 
 /* =========================================================
    Constants
@@ -151,17 +151,24 @@ function openModal(title, body, wide) { $('modalTitle').textContent = title; $('
 function closeModal() { $('modal').classList.add('hidden'); document.body.style.overflow = ''; S.form = {}; }
 document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('modal').classList.contains('hidden')) closeModal(); });
 function toggleMenu() {} // the sidebar menu was replaced by the Home page of cards (v2.0)
-var THEMES = { mono: '#FFFFFF', cream: '#F4E6B8', colour: '#EEF2FF' };
-function toggleDark() { var on = !document.body.classList.contains('dark-mode'); document.body.classList.toggle('dark-mode', on); try { localStorage.setItem('wiwe_dark', on ? '1' : '0'); } catch (e) {} paintDarkIcon(); }
-function setTheme(t) { if (!THEMES[t]) t = 'mono'; document.body.setAttribute('data-theme', t); try { localStorage.setItem('wiwe_theme', t); } catch (e) {} paintDarkIcon(); }
+var THEMES = { colour: '#4F46E5', mono: '#FFFFFF', cream: '#F4E6B8' };
+var THEME_NAMES = { colour: 'Colourful', mono: 'Black & white', cream: 'Black & cream' };
+function curTheme() { return document.body.getAttribute('data-theme') || 'colour'; }
+function toggleDark() { var on = !document.body.classList.contains('dark-mode'); document.body.classList.toggle('dark-mode', on); try { localStorage.setItem('wiwe_dark', on ? '1' : '0'); } catch (e) {} paintDarkIcon(); if (S.view === 'account') render(); }
+function toggleThemeMenu(open) { var m = $('themeMenu'); if (!m) return; var show = open === undefined ? m.classList.contains('hidden') : open; m.classList.toggle('hidden', !show); $('themeCurrent').setAttribute('aria-expanded', String(show)); }
+document.addEventListener('click', function (e) { var p = $('themePick'); if (p && !p.contains(e.target)) toggleThemeMenu(false); });
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') toggleThemeMenu(false); });
+function setTheme(t) { if (!THEMES[t]) t = 'colour'; document.body.setAttribute('data-theme', t); try { localStorage.setItem('wiwe_theme', t); } catch (e) {} toggleThemeMenu(false); paintDarkIcon(); if (S.view === 'account') render(); }
+function setTextSize(z) { document.documentElement.setAttribute('data-size', z); try { localStorage.setItem('wiwe_size', z); } catch (e) {} if (S.view === 'account') render(); }
 function paintDarkIcon() {
-  var dark = document.body.classList.contains('dark-mode'), t = document.body.getAttribute('data-theme') || 'mono';
+  var dark = document.body.classList.contains('dark-mode'), t = curTheme();
   var el = $('darkIcon'); if (el) el.innerHTML = icon(dark ? 'moon' : 'sun', 13);
   var sw = $('darkSwitch'); if (sw) { sw.setAttribute('aria-checked', String(dark)); sw.classList.toggle('on', dark); }
-  document.querySelectorAll('.theme-pick .sw').forEach(function (b) { var on = b.getAttribute('data-t') === t; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
+  var cur = $('themeCurrent'); if (cur) { cur.className = 'sw sw-current sw-' + t; cur.title = 'Colour scheme: ' + THEME_NAMES[t]; }
+  document.querySelectorAll('.tm-opt').forEach(function (b) { var on = b.getAttribute('data-t') === t; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
   var m = document.querySelector('meta[name=theme-color]'); if (m) m.setAttribute('content', dark ? '#121212' : THEMES[t]);
 }
-(function () { var t = 'mono', d = false; try { t = localStorage.getItem('wiwe_theme') || 'mono'; d = localStorage.getItem('wiwe_dark') === '1'; } catch (e) {} document.body.setAttribute('data-theme', THEMES[t] ? t : 'mono'); if (d) document.body.classList.add('dark-mode'); document.addEventListener('DOMContentLoaded', paintDarkIcon); })();
+(function () { var t = 'colour', d = false, z = 'normal'; try { t = localStorage.getItem('wiwe_theme') || 'colour'; d = localStorage.getItem('wiwe_dark') === '1'; z = localStorage.getItem('wiwe_size') || 'normal'; } catch (e) {} document.body.setAttribute('data-theme', THEMES[t] ? t : 'colour'); document.documentElement.setAttribute('data-size', z); if (d) document.body.classList.add('dark-mode'); document.addEventListener('DOMContentLoaded', paintDarkIcon); })();
 
 /* Little icons on the cards inside each section, chosen from the card's heading. */
 var CARD_ICON_RULES = [
@@ -488,7 +495,7 @@ function scheduleRender() { if (renderQueued) return; renderQueued = true; reque
 function render() {
   if (!S.me || !S.view) return;
   var v = VIEWS[S.view]; if (!v) return;
-  $('backBtn').classList.toggle('hidden', S.view === 'home');
+
   document.body.setAttribute('data-view', S.view);
   var now = new Date();
   $('pageEyebrow').textContent = (v.eyebrow ? v.eyebrow() : DOW[now.getDay()] + ', ' + now.getDate() + ' ' + MON[now.getMonth()]);
@@ -505,11 +512,48 @@ function render() {
   document.title = (typeof v.title === 'function' ? v.title() : v.title) + ' · Wiwe';
 }
 function paintMe() {
-  $('meBox').innerHTML = '<div class="avatar" title="' + esc(S.me.name) + '">' + esc(initials(S.me.name)) + '</div><div class="me-text"><strong>' + esc(S.me.name) + '</strong><span>' + esc((S.me.roles || []).map(function (r) { return ROLES[r]; }).join(', ')) + '</span></div>' +
-    '<button class="icon-btn" type="button" aria-label="Change my password" title="Change my password" onclick="openMyPassword()">' + icon('key') + '</button>' +
-    '<button class="icon-btn" type="button" aria-label="Sign out" title="Sign out" onclick="signOut()">' + icon('logout') + '</button>';
+  $('meBox').innerHTML = '<button type="button" class="me-btn" onclick="go(\'account\')" title="My account and settings" aria-label="My account and settings, ' + esc(S.me.name) + '"><span class="avatar">' + esc(initials(S.me.name)) + '</span><span class="me-text"><strong>' + esc(S.me.name) + '</strong><span>' + esc((S.me.roles || []).map(function (r) { return ROLES[r]; }).join(', ')) + '</span></span></button>';
   paintDarkIcon();
 }
+/* ---------- My account: settings for the signed-in person ---------- */
+function startPage() { try { return localStorage.getItem('wiwe_start') || 'home'; } catch (e) { return 'home'; } }
+function setStartPage(v) { try { localStorage.setItem('wiwe_start', v); } catch (e) {} toast('Saved for this device'); }
+function checkForUpdate() { toast('Checking for a new version…'); if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) navigator.serviceWorker.getRegistration().then(function (r) { if (r) r.update(); setTimeout(function () { location.reload(); }, 1200); }); else location.reload(); }
+VIEWS.account = {
+  title: 'My account',
+  eyebrow: function () { return '@' + (S.me.username || ''); },
+  render: function () {
+    var me = S.me, t = curTheme(), dark = document.body.classList.contains('dark-mode'), z = document.documentElement.getAttribute('data-size') || 'normal';
+    var opt = function (on, click, label, extra) { return '<button type="button" class="acct-opt' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="' + click + '">' + (extra || '') + esc(label) + '</button>'; };
+    var mine = NAV.filter(function (n) { return has.apply(null, n.roles); });
+    var h = '<div class="split"><div class="wide">';
+    h += '<div class="card"><h2>Profile</h2>' +
+      '<div class="list-row"><span>Name</span><strong>' + esc(me.name) + '</strong></div>' +
+      '<div class="list-row"><span>Username</span><strong>@' + esc(me.username || '') + '</strong></div>' +
+      '<div class="list-row"><span>Role</span><strong>' + esc((me.roles || []).map(function (r) { return ROLES[r]; }).join(', ')) + '</strong></div>' +
+      (me.phone ? '<div class="list-row"><span>Phone</span><strong>' + esc(me.phone) + '</strong></div>' : '') +
+      '<div class="note">' + (isAdmin() ? 'Change names, roles and usernames in Admin settings → Staff.' : 'To change your name, role or username, ask the owner.') + '</div></div>';
+    h += '<div class="card"><h2>Appearance (this device)</h2>' +
+      '<div class="field">Colour scheme<div class="acct-opts">' + ['colour', 'mono', 'cream'].map(function (k) { return opt(t === k, "setTheme('" + k + "')", THEME_NAMES[k], '<span class="sw sw-' + k + '"></span>'); }).join('') + '</div></div>' +
+      '<div class="field">Dark mode<div class="acct-opts">' + opt(!dark, dark ? 'toggleDark()' : '', 'Off') + opt(dark, dark ? '' : 'toggleDark()', 'On') + '</div></div>' +
+      '<div class="field">Text size<div class="acct-opts">' + [['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']].map(function (s) { return opt(z === s[0], "setTextSize('" + s[0] + "')", s[1]); }).join('') + '</div></div>' +
+      '<label class="field">Open the app on<select onchange="setStartPage(this.value)"><option value="home">Home</option>' + mine.map(function (n) { return '<option value="' + n.id + '"' + (startPage() === n.id ? ' selected' : '') + '>' + esc(n.label) + '</option>'; }).join('') + '</select></label></div>';
+    h += '</div><div class="narrow">';
+    h += '<div class="card"><h2>Password and sign-in</h2><div class="acct-opts" style="flex-direction:column">' +
+      '<button class="btn" type="button" onclick="openMyPassword()">' + icon('key') + 'Change my password</button>' +
+      '<button class="btn danger" type="button" onclick="signOut()">' + icon('logout') + 'Sign out</button></div>' +
+      '<div class="note" style="margin-top:10px">Forgot your password? The owner can send you a new set-up link.</div></div>';
+    if (isAdmin()) h += '<div class="card"><h2>Owner tools</h2><div class="acct-opts" style="flex-direction:column">' +
+      '<button class="btn" type="button" onclick="go(\'admin\')">' + icon('admin') + 'Admin settings</button>' +
+      '<button class="btn" type="button" onclick="go(\'today\')">' + icon('today') + 'Today and daily summary</button></div></div>';
+    else if (has('manager')) h += '<div class="card"><h2>Manager tools</h2><div class="acct-opts" style="flex-direction:column">' +
+      '<button class="btn" type="button" onclick="go(\'reports\')">' + icon('reports') + 'Reports</button>' +
+      '<button class="btn" type="button" onclick="go(\'today\')">' + icon('today') + 'Today and alerts</button></div></div>';
+    h += '<div class="card"><h2>About this app</h2><div class="list-row"><span>Version</span><strong>' + esc(APP_VERSION) + '</strong></div>' +
+      '<button class="btn" type="button" style="margin-top:10px" onclick="checkForUpdate()">' + icon('download') + 'Check for update</button></div>';
+    return h + '</div></div>';
+  }
+};
 function openMyPassword() {
   var b = '<form class="form" onsubmit="event.preventDefault();changeMyPassword()"><div class="note">Signed in as <strong>@' + esc(S.me.username) + '</strong></div><div class="fields">' +
     field('Current password', input('cp-old', '', 'type="password" required autocomplete="current-password"')) +
@@ -587,7 +631,7 @@ function boot() {
     $('boot').classList.add('hidden'); $('login').classList.add('hidden'); $('app').classList.remove('hidden');
     paintMe(); startListeners();
     var h = (location.hash || '').replace('#', '');
-    go(VIEWS[h] && canSee(h) ? h : defaultView());
+    var sp = startPage(); go(VIEWS[h] && canSee(h) ? h : (VIEWS[sp] && canSee(sp) ? sp : defaultView()));
     setTimeout(ensureDailyTasks, 4000);
     setTimeout(function () { if (typeof purgeOldIdPhotos === 'function') purgeOldIdPhotos(); }, 8000);
     setTimeout(function () { if (typeof checkRules === 'function') checkRules(); }, 2500);

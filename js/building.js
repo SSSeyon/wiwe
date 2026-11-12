@@ -56,8 +56,9 @@ function bpBuilding(by, nf) {
   for (var f = nf - 1; f >= 0; f--) {
     var y = top + (nf - 1 - f) * FH, rs = by[f] || [];
     // back row: raised, smaller
-    s += '<rect x="24" y="' + (y + 3) + '" width="252" height="22" rx="3" fill="rgba(22,22,22,.06)"/>';
-    s += bpTile(rs[2], 34, y + 5, 62, 18, false) + bpTile(rs[3], 119, y + 5, 62, 18, false) + bpTile(rs[4], 204, y + 5, 62, 18, false);
+    s += '<rect x="30" y="' + (y + 3) + '" width="240" height="22" rx="3" fill="rgba(22,22,22,.06)"/>';
+    // left edge lines up with front room 1, right edge with front room 2, equal gaps between
+    s += bpTile(rs[2], 36, y + 5, 68, 18, false) + bpTile(rs[3], 116, y + 5, 68, 18, false) + bpTile(rs[4], 196, y + 5, 68, 18, false);
     // arched balcony bay (entrance on the ground floor)
     s += '<rect x="119" y="' + (y + 25) + '" width="62" height="' + (FH - 28) + '" fill="#E9D79B"/>';
     s += '<path d="M126 ' + (y + FH - 4) + ' L126 ' + (y + 36) + ' Q150 ' + (y + 22) + ' 174 ' + (y + 36) + ' L174 ' + (y + FH - 4) + ' Z" fill="#6E5C3A"/>';

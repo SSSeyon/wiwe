@@ -241,3 +241,10 @@ Do this once, after publishing the rules:
 - **Top-right corner (always visible):** three theme swatches (Black & white, the default; Black & cream; Colourful) and a dark-mode switch. Both are remembered per device.
 - Cards inside each section get a small icon picked from their heading (`CARD_ICON_RULES` in js/core.js). If nothing matches, the section's own icon is used. In the Colourful theme the icons and home cards are coloured per section.
 - Room status is never set by hand. It changes through the actions: check-in → Occupied, check-out → Dirty (cleaning task created), cleaner starts → Cleaning, cleaner finishes → Inspection, front desk/manager passes inspection → Ready, Report fault + "take out of order" → Out of order, "Back in service" → Dirty.
+
+## 16. v2.1.0
+- **Set status override:** managers and the owner see "Set status…" on a room with no guest in it. It needs a reason and is written to the activity log as `room_status_override`. Setting Dirty creates a cleaning task if none is open.
+- No Home button inside sections; the logo goes Home.
+- **Colour scheme picker:** one swatch shows the active scheme; tap it to pick Colourful (now the default), Black & white or Black & cream. In Colourful, each section has its own colour (`--accent` per `data-view` in styles.css) used by the header, buttons, tabs, cards, figure tiles and dialogs; the top bar is a gradient.
+- **My account page** (tap your name or initials): profile (read only), colour scheme, dark mode, text size, start page (per device), change password, sign out, owner/manager shortcuts, app version and "Check for update".
+- Room board: back-row tiles now line up with the front tiles (left edge over room 1, right edge over room 2, equal gaps).
