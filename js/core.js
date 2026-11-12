@@ -1,4 +1,4 @@
-const APP_VERSION = '1.9.3';
+const APP_VERSION = '2.0.0';
 
 /* =========================================================
    Constants
@@ -125,7 +125,19 @@ var ICONS = {
   key: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3L21 2M16 7l3 3M19 4l2 2"/>',
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
   moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
-  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  alert: '<path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
+  clipboard: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/>',
+  tag: '<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
+  shirt: '<path d="M8 3l-5 3 2 5 3-1v11h8V10l3 1 2-5-5-3a4 4 0 0 1-8 0z"/>',
+  calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  users: '<circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M16 4a4 4 0 0 1 0 8M22 21a7 7 0 0 0-4-6.3"/>',
+  list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  download: '<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>',
+  camera: '<path d="M4 7h3l2-3h6l2 3h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="4"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  dot: '<circle cx="12" cy="12" r="4"/>',
+  home: '<path d="M3 11l9-8 9 8M5 9v12h14V9"/>'
 };
 function icon(name, size) { return '<svg aria-hidden="true" width="' + (size || 18) + '" height="' + (size || 18) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[name] || '') + '</svg>'; }
 
@@ -138,10 +150,42 @@ function fail(e) { console.error(e); var m = (e && e.message) || String(e); if (
 function openModal(title, body, wide) { $('modalTitle').textContent = title; $('modalBody').innerHTML = body; $('modalCard').className = 'modal-card' + (wide ? ' wide' : ''); $('modal').classList.remove('hidden'); document.body.style.overflow = 'hidden'; hydratePhotos($('modalBody')); var f = $('modalBody').querySelector('input:not([type=hidden]):not([type=checkbox]):not([type=radio]),select,textarea'); if (f && window.innerWidth > 700) setTimeout(function () { f.focus(); }, 50); }
 function closeModal() { $('modal').classList.add('hidden'); document.body.style.overflow = ''; S.form = {}; }
 document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('modal').classList.contains('hidden')) closeModal(); });
-function toggleMenu(open) { $('sidebar').classList.toggle('open', open); $('overlay').classList.toggle('show', open); }
+function toggleMenu() {} // the sidebar menu was replaced by the Home page of cards (v2.0)
+var THEMES = { mono: '#FFFFFF', cream: '#F4E6B8', colour: '#EEF2FF' };
 function toggleDark() { var on = !document.body.classList.contains('dark-mode'); document.body.classList.toggle('dark-mode', on); try { localStorage.setItem('wiwe_dark', on ? '1' : '0'); } catch (e) {} paintDarkIcon(); }
-function paintDarkIcon() { var el = $('darkIcon'); if (el) el.innerHTML = icon(document.body.classList.contains('dark-mode') ? 'sun' : 'moon'); }
-try { if (localStorage.getItem('wiwe_dark') === '1') document.body.classList.add('dark-mode'); } catch (e) {}
+function setTheme(t) { if (!THEMES[t]) t = 'mono'; document.body.setAttribute('data-theme', t); try { localStorage.setItem('wiwe_theme', t); } catch (e) {} paintDarkIcon(); }
+function paintDarkIcon() {
+  var dark = document.body.classList.contains('dark-mode'), t = document.body.getAttribute('data-theme') || 'mono';
+  var el = $('darkIcon'); if (el) el.innerHTML = icon(dark ? 'moon' : 'sun', 13);
+  var sw = $('darkSwitch'); if (sw) { sw.setAttribute('aria-checked', String(dark)); sw.classList.toggle('on', dark); }
+  document.querySelectorAll('.theme-pick .sw').forEach(function (b) { var on = b.getAttribute('data-t') === t; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
+  var m = document.querySelector('meta[name=theme-color]'); if (m) m.setAttribute('content', dark ? '#121212' : THEMES[t]);
+}
+(function () { var t = 'mono', d = false; try { t = localStorage.getItem('wiwe_theme') || 'mono'; d = localStorage.getItem('wiwe_dark') === '1'; } catch (e) {} document.body.setAttribute('data-theme', THEMES[t] ? t : 'mono'); if (d) document.body.classList.add('dark-mode'); document.addEventListener('DOMContentLoaded', paintDarkIcon); })();
+
+/* Little icons on the cards inside each section, chosen from the card's heading. */
+var CARD_ICON_RULES = [
+  [/alert|attention|warning|setup|rules|leak|watch/i, 'alert'], [/summary|brief|handover|hand over|hand-over/i, 'clipboard'],
+  [/recorded|received/i, 'payments'], [/spent|diesel|fuel/i, 'expenses'], [/batch|pieces|returned/i, 'shirt'], [/standard|kitchen/i, 'building'], [/yesterday|^net$/i, 'reports'],
+  [/shift|cash|till|drawer/i, 'shift'], [/refund|payment|transfer|bank|pos\b|confirm/i, 'payments'],
+  [/sale|sell|price|selling/i, 'tag'], [/laundry|linen|towel|sheet/i, 'shirt'],
+  [/clean|housekeep|turnover|inspect/i, 'housekeeping'], [/maint|repair|fault|job|asset|vendor|technician/i, 'maintenance'],
+  [/stock|store|supplies|item|inventory|restock|usage|movement/i, 'inventory'], [/expense|spend|bill|cost/i, 'expenses'],
+  [/report|revenue|earn|income|occupancy|rate|money|profit|month/i, 'reports'], [/calendar|reservation|arriv|depart|booking|movements today/i, 'calendar'],
+  [/guest|stay|check/i, 'stays'], [/staff|account|user|people|team|role/i, 'users'],
+  [/code|security|lock|password|admin/i, 'admin'], [/audit|activity|log|history/i, 'list'],
+  [/backup|export|download/i, 'download'], [/photo|\bid\b/i, 'camera'], [/room|floor|building|board/i, 'building'],
+  [/setting|general|business/i, 'gear']
+];
+function cardIconFor(text) { for (var i = 0; i < CARD_ICON_RULES.length; i++) if (CARD_ICON_RULES[i][0].test(text)) return CARD_ICON_RULES[i][1]; return ICONS[S.view] && S.view !== 'today' ? S.view : 'dot'; }
+function decorateCards(root) {
+  if (!root) return;
+  root.querySelectorAll('.card h2, .stat .label').forEach(function (h) {
+    if (h.querySelector('.ci') || h.closest('.home-grid')) return;
+    var name = cardIconFor(h.textContent || '');
+    h.insertAdjacentHTML('afterbegin', '<span class="ci ci-' + name + '" aria-hidden="true">' + icon(name, h.tagName === 'H2' ? 15 : 13) + '</span>');
+  });
+}
 
 /* =========================================================
    Photos: compressed JPEG stored in the "photos" collection
@@ -403,23 +447,38 @@ function alertList(list, limit) {
    Navigation and rendering
    ========================================================= */
 var NAV = [
-  { id: 'today', label: 'Today', roles: ['admin', 'manager'] },
-  { id: 'board', label: 'Room board', roles: ['manager', 'frontdesk'] },
-  { id: 'shift', label: 'Shift', roles: ['manager', 'frontdesk'] },
-  { id: 'stays', label: 'Stays', roles: ['manager', 'frontdesk'] },
-  { id: 'payments', label: 'Payments', roles: ['manager', 'frontdesk'] },
-  { id: 'housekeeping', label: 'Housekeeping', roles: ['manager', 'frontdesk', 'housekeeping', 'maintenance'] },
-  { id: 'maintenance', label: 'Maintenance', roles: ['manager', 'frontdesk', 'housekeeping', 'maintenance'] },
-  { id: 'inventory', label: 'Inventory', roles: ['manager', 'frontdesk'] },
-  { id: 'expenses', label: 'Expenses', roles: ['manager', 'frontdesk'] },
-  { id: 'reports', label: 'Reports', roles: ['manager'] },
-  { id: 'admin', label: 'Admin settings', roles: [] }
+  { id: 'today', label: 'Today', desc: 'Alerts and the daily summary', roles: ['admin', 'manager'] },
+  { id: 'board', label: 'Room board', desc: 'Every room and its status', roles: ['manager', 'frontdesk'] },
+  { id: 'shift', label: 'Shift', desc: 'Start, close and hand over', roles: ['manager', 'frontdesk'] },
+  { id: 'stays', label: 'Stays', desc: 'Guests, reservations, calendar', roles: ['manager', 'frontdesk'] },
+  { id: 'payments', label: 'Payments', desc: 'Transfers waiting to be confirmed', roles: ['manager', 'frontdesk'] },
+  { id: 'housekeeping', label: 'Housekeeping', desc: 'Cleaning tasks and laundry', roles: ['manager', 'frontdesk', 'housekeeping', 'maintenance'] },
+  { id: 'maintenance', label: 'Maintenance', desc: 'Faults, repairs and assets', roles: ['manager', 'frontdesk', 'housekeeping', 'maintenance'] },
+  { id: 'inventory', label: 'Inventory', desc: 'Supplies and items for sale', roles: ['manager', 'frontdesk'] },
+  { id: 'expenses', label: 'Expenses', desc: 'Spending and approvals', roles: ['manager', 'frontdesk'] },
+  { id: 'reports', label: 'Reports', desc: 'Money and occupancy', roles: ['manager'] },
+  { id: 'admin', label: 'Admin settings', desc: 'Rooms, staff, codes, backup', roles: [] }
 ];
 var VIEWS = {}; // filled by front.js, ops.js, admin.js: { title, eyebrow?, render(), actions?() }
 
 function canSee(id) { var n = NAV.find(function (x) { return x.id === id; }); if (!n) return true; return has.apply(null, n.roles); }
-function defaultView() { if (isAdmin()) return 'today'; if (has('manager', 'frontdesk')) return 'board'; if (has('housekeeping')) return 'housekeeping'; return 'maintenance'; }
-function go(view, params) { if (!canSee(view)) view = defaultView(); S.view = view; S.params = params || {}; if (params && params.tab) S.tab[view] = params.tab; if (view === 'reports') S.report = null; closeModal(); toggleMenu(false); window.scrollTo(0, 0); try { history.replaceState(null, '', '#' + view); } catch (e) {} render(); }
+function defaultView() { return 'home'; }
+function go(view, params) { if (!VIEWS[view] || !canSee(view)) view = defaultView(); S.view = view; S.params = params || {}; if (params && params.tab) S.tab[view] = params.tab; if (view === 'reports') S.report = null; closeModal(); window.scrollTo(0, 0); try { history.replaceState(null, '', '#' + view); } catch (e) {} render(); }
+function navCounts() { return { shift: (typeof handoverWaiting === 'function' && handoverWaiting() && !myOpenShift()) ? 1 : 0, payments: unconfirmedPayments().length, today: alerts().length, housekeeping: S.data.tasks.filter(function (t) { return t.status !== 'done' && (!has('manager', 'frontdesk') ? (!t.assignee || t.assignee === S.user.uid) : true); }).length, maintenance: openJobs().length }; }
+var COUNT_WORD = { shift: 'handover waiting', payments: 'to confirm', today: 'alert', housekeeping: 'open', maintenance: 'open' };
+VIEWS.home = {
+  title: function () { var h = new Date().getHours(); return (h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening') + ', ' + String((S.me && S.me.name) || '').split(' ')[0]; },
+  render: function () {
+    var c = navCounts();
+    return '<div class="home-grid">' + NAV.filter(function (n) { return has.apply(null, n.roles); }).map(function (n) {
+      var k = c[n.id], w = COUNT_WORD[n.id] || '';
+      return '<button type="button" class="home-card hc-' + n.id + '" onclick="go(\'' + n.id + '\')">' +
+        '<span class="hc-icon">' + icon(n.id, 22) + '</span>' +
+        '<span class="hc-text"><strong>' + esc(n.label) + '</strong><span>' + esc(n.desc) + '</span></span>' +
+        (k ? '<span class="hc-count" title="' + k + ' ' + w + '">' + k + '</span>' : '') + '</button>';
+    }).join('') + '</div>';
+  }
+};
 function setTab(view, tab) { S.tab[view] = tab; render(); }
 function tabs(view, list) { var cur = S.tab[view] || list[0][0]; return '<div class="tabs" role="tablist">' + list.map(function (t) { return '<button type="button" role="tab" aria-selected="' + (cur === t[0]) + '" class="tab' + (cur === t[0] ? ' active' : '') + '" onclick="setTab(\'' + view + '\',\'' + t[0] + '\')">' + esc(t[1]) + '</button>'; }).join('') + '</div>'; }
 function curTab(view, def) { return S.tab[view] || def; }
@@ -428,12 +487,9 @@ var renderQueued = false;
 function scheduleRender() { if (renderQueued) return; renderQueued = true; requestAnimationFrame(function () { renderQueued = false; render(); }); }
 function render() {
   if (!S.me || !S.view) return;
-  var counts = { shift: (typeof handoverWaiting === 'function' && handoverWaiting() && !myOpenShift()) ? 1 : 0, payments: unconfirmedPayments().length, today: alerts().length, housekeeping: S.data.tasks.filter(function (t) { return t.status !== 'done' && (!has('manager', 'frontdesk') ? (!t.assignee || t.assignee === S.user.uid) : true); }).length, maintenance: openJobs().length };
-  $('nav').innerHTML = NAV.filter(function (n) { return has.apply(null, n.roles); }).map(function (n) {
-    var c = counts[n.id];
-    return '<button type="button" class="nav-item' + (S.view === n.id ? ' active' : '') + '" onclick="go(\'' + n.id + '\')">' + icon(n.id) + '<span>' + n.label + '</span>' + (c ? '<span class="count">' + c + '</span>' : '') + '</button>';
-  }).join('');
   var v = VIEWS[S.view]; if (!v) return;
+  $('backBtn').classList.toggle('hidden', S.view === 'home');
+  document.body.setAttribute('data-view', S.view);
   var now = new Date();
   $('pageEyebrow').textContent = (v.eyebrow ? v.eyebrow() : DOW[now.getDay()] + ', ' + now.getDate() + ' ' + MON[now.getMonth()]);
   $('pageTitle').textContent = typeof v.title === 'function' ? v.title() : v.title;
@@ -444,11 +500,12 @@ function render() {
   window.scrollTo(0, y);
   if (active && $(active) && $('view').contains($(active))) { var el = $(active); el.focus(); if (el.setSelectionRange && el.type === 'search') { var l = el.value.length; el.setSelectionRange(l, l); } }
   hydratePhotos($('view'));
+  decorateCards($('view'));
   if (typeof afterRender === 'function') afterRender();
   document.title = (typeof v.title === 'function' ? v.title() : v.title) + ' · Wiwe';
 }
 function paintMe() {
-  $('meBox').innerHTML = '<div class="avatar">' + esc(initials(S.me.name)) + '</div><div class="me-text"><strong>' + esc(S.me.name) + '</strong><span>' + esc((S.me.roles || []).map(function (r) { return ROLES[r]; }).join(', ')) + '</span></div>' +
+  $('meBox').innerHTML = '<div class="avatar" title="' + esc(S.me.name) + '">' + esc(initials(S.me.name)) + '</div><div class="me-text"><strong>' + esc(S.me.name) + '</strong><span>' + esc((S.me.roles || []).map(function (r) { return ROLES[r]; }).join(', ')) + '</span></div>' +
     '<button class="icon-btn" type="button" aria-label="Change my password" title="Change my password" onclick="openMyPassword()">' + icon('key') + '</button>' +
     '<button class="icon-btn" type="button" aria-label="Sign out" title="Sign out" onclick="signOut()">' + icon('logout') + '</button>';
   paintDarkIcon();

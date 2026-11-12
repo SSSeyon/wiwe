@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Wiwe Apartments</title>
-<meta name="theme-color" content="#F4E6B8">
+<meta name="theme-color" content="#FFFFFF">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="img/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="img/icon-192.png">
@@ -28,32 +28,29 @@
 
 <div id="login" class="login hidden"></div>
 
+<div class="corner" id="corner" aria-label="Appearance">
+  <div class="theme-pick" role="radiogroup" aria-label="Colour theme">
+    <button type="button" role="radio" class="sw sw-mono" data-t="mono" onclick="setTheme('mono')" title="Black and white" aria-label="Black and white theme"></button>
+    <button type="button" role="radio" class="sw sw-cream" data-t="cream" onclick="setTheme('cream')" title="Black and cream" aria-label="Black and cream theme"></button>
+    <button type="button" role="radio" class="sw sw-colour" data-t="colour" onclick="setTheme('colour')" title="Colourful" aria-label="Colourful theme"></button>
+  </div>
+  <button type="button" class="dark-switch" id="darkSwitch" role="switch" aria-checked="false" aria-label="Dark mode" title="Dark mode" onclick="toggleDark()"><span class="knob" id="darkIcon"></span></button>
+</div>
+
 <div id="app" class="app hidden">
-  <aside class="sidebar" id="sidebar" aria-label="Main">
-    <div class="brand side-brand">
-      <img class="logo-img" src="img/logo.png" alt="Wiwe Apartments">
-      <span>Operations · Badagry</span>
-    </div>
-    <nav id="nav" class="nav"></nav>
-    <div class="side-foot">
-      <button class="nav-item" type="button" onclick="toggleDark()"><span id="darkIcon"></span><span>Dark mode</span></button>
-      <div class="me" id="meBox"></div>
-    </div>
-  </aside>
-  <div class="overlay" id="overlay" onclick="toggleMenu(false)"></div>
+  <header class="appbar">
+    <button type="button" class="home-link" onclick="go('home')" aria-label="Home"><img class="logo-img" src="img/logo.png" alt="Wiwe Apartments"></button>
+    <button type="button" class="sync" id="syncBadge" onclick="forceSync()"><span class="dot"></span><span id="syncText">Connecting…</span></button>
+    <div class="me" id="meBox"></div>
+  </header>
   <div class="main">
     <header class="topbar">
-      <button class="icon-btn menu-btn" type="button" aria-label="Open menu" onclick="toggleMenu(true)">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
-      </button>
+      <button class="btn small back-btn" id="backBtn" type="button" onclick="go('home')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Home</button>
       <div class="titles">
         <span class="eyebrow" id="pageEyebrow"></span>
         <h1 id="pageTitle"></h1>
       </div>
-      <div class="top-actions">
-        <button type="button" class="sync" id="syncBadge" onclick="forceSync()"><span class="dot"></span><span id="syncText">Connecting…</span></button>
-        <div id="topActions" class="top-actions"></div>
-      </div>
+      <div id="topActions" class="top-actions"></div>
     </header>
     <main id="view" class="content"></main>
   </div>

@@ -235,3 +235,9 @@ Do this once, after publishing the rules:
   - a user may set only `onboarded`, `onboardedAt` and `inviteCode` on their own user record
   - the admin can delete usernames (for renames)
   - **Re-publish `firestore.rules`.**
+
+## 15. v2.0.0: home page, themes, card icons
+- The sidebar menu is gone. After sign-in everyone lands on **Home**: one card per section they are allowed to see, with a count badge (alerts, payments to confirm, open tasks/jobs, handover waiting). Every section has a **Home** button top-left; the logo also goes Home.
+- **Top-right corner (always visible):** three theme swatches (Black & white, the default; Black & cream; Colourful) and a dark-mode switch. Both are remembered per device.
+- Cards inside each section get a small icon picked from their heading (`CARD_ICON_RULES` in js/core.js). If nothing matches, the section's own icon is used. In the Colourful theme the icons and home cards are coloured per section.
+- Room status is never set by hand. It changes through the actions: check-in → Occupied, check-out → Dirty (cleaning task created), cleaner starts → Cleaning, cleaner finishes → Inspection, front desk/manager passes inspection → Ready, Report fault + "take out of order" → Out of order, "Back in service" → Dirty.
