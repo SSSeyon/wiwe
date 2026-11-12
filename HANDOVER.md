@@ -258,3 +258,10 @@ Do this once, after publishing the rules:
 - **Maintenance / Payments:** figure boxes only on the first tab (Jobs / Unconfirmed).
 - **My account:** one column; profile with password, sign-out (and Admin settings for the owner) together; version line at the bottom.
 - Helpers in js/core.js: `actionMenu()`, `subTabs()`, `fold()`.
+
+## 18. v2.3.0: less scrolling
+- Room board: the Cards layout and its toggle are gone; the building picture is the only board.
+- "Sell item" is now "Record sale" everywhere.
+- Home: all section cards fit on one screen (phones: 3 per row, names only; larger screens: name + description).
+- Tighter spacing app-wide (header, cards, figure tiles, tabs); on phones figure tiles sit two per row and the page title gets its own line.
+- Today: the "Yesterday in brief" text folds away; WhatsApp and Copy buttons stay visible.

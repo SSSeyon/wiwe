@@ -515,3 +515,52 @@ details.fold[open]>summary{margin-bottom:14px}
 .card .field+.field,.card .acct-two+.field,.card .field+.acct-two{margin-top:12px}
 .acct-foot{font-size:13px;padding:0 4px}
 .linkish{background:none;border:none;padding:0;color:var(--brand);font-weight:600;cursor:pointer;text-decoration:underline}
+
+/* ===================== v2.3: less scrolling ===================== */
+/* tighter spacing everywhere */
+.topbar{padding:14px 32px 2px;align-items:center}
+.titles h1{font-size:26px}
+.content{padding:12px 32px 28px;gap:14px}
+.card{padding:14px 16px}
+.card h2{font-size:16px;margin-bottom:8px}
+.card-head{margin-bottom:8px}
+.split{gap:14px}
+.split>.wide,.split>.narrow{gap:14px}
+.grid-stats{gap:10px}
+.stat{padding:11px 14px;gap:2px}
+.stat .value{font-size:22px}
+.list-row{padding:8px 0}
+.tab{padding:8px 12px;min-height:40px}
+/* home: every section on one screen */
+body[data-view=home] .eyebrow{display:none}
+body[data-view=home] .titles h1{font-size:22px}
+.home-grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+.home-card{min-height:112px;padding:14px;gap:10px}
+.hc-icon{width:40px;height:40px}
+@media (max-width:860px){
+  .topbar{padding:10px 16px 0}
+  .eyebrow{font-size:11px}
+  .titles{min-width:0}
+  .titles h1{font-size:21px}
+  .content{padding:10px 12px 24px;gap:12px}
+  .card{padding:12px 14px}
+  .grid-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .stat{padding:9px 11px}
+  .stat .value{font-size:19px}
+  .stat .label{font-size:12px}
+  .stat .sub{font-size:11px}
+  .stat .label .ci{width:18px;height:18px;margin-right:4px}
+  .stat .label .ci svg{width:11px;height:11px}
+  .top-actions .btn{min-height:40px;padding:8px 12px;font-size:13px}
+  .home-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .home-card{min-height:98px;padding:10px 8px;gap:6px;align-items:center;text-align:center;border-radius:14px}
+  .hc-icon{width:36px;height:36px;border-radius:10px}
+  .hc-icon svg{width:19px;height:19px}
+  .hc-text{align-items:center}
+  .hc-text strong{font-size:13px;line-height:1.15}
+  .hc-text span{display:none}
+  .hc-count{top:6px;right:6px;min-width:20px;height:20px;font-size:11px;padding:0 6px}
+  body[data-theme=colour] .home-card{border-top-width:3px}
+}
+@media (max-width:860px){.titles{flex:1 1 100%}.grid-stats .stat:last-child:nth-child(odd){grid-column:1/-1}}
+@media (max-width:360px){.home-grid{gap:6px}.home-card{min-height:90px}}

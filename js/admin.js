@@ -439,10 +439,10 @@ function dailySummaryText(day) {
 }
 function dailySummaryCard() {
   var day = addDays(todayStr(), -1), text = dailySummaryText(day);
-  return '<div class="card"><h2>Yesterday in brief</h2><pre class="summary-pre">' + esc(text.replace(/\*/g, '')) + '</pre>' +
-    '<div class="row"><a class="btn small primary" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent(text) + '">Send to WhatsApp</a>' +
-    '<button class="btn small" type="button" onclick="copySummary()">Copy</button></div>' +
-    '<div class="muted small" style="margin-top:8px">The same summary can be emailed to you automatically every morning. See HANDOVER.md, "Daily summary email".</div></div>';
+  // Buttons stay visible; the full text folds away to save scrolling
+  return '<div class="card"><div class="card-head"><h2>Yesterday in brief</h2><div class="row"><a class="btn small primary" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent(text) + '">WhatsApp</a>' +
+    '<button class="btn small" type="button" onclick="copySummary()">Copy</button></div></div>' +
+    '<details class="sum-fold"' + (foldOpen('today-sum') ? ' open' : '') + ' ontoggle="S.fold=S.fold||{};S.fold[\'today-sum\']=this.open"><summary class="muted">Show the summary</summary><pre class="summary-pre">' + esc(text.replace(/\*/g, '')) + '</pre></details></div>';
 }
 function copySummary() {
   var t = dailySummaryText(addDays(todayStr(), -1)).replace(/\*/g, '');

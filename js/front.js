@@ -26,17 +26,14 @@ VIEWS.board = {
       '</section>';
     var layout = boardLayout();
     html += '<div class="split board-split"><section class="wide board-main" aria-label="Rooms">' +
-      '<div class="row between"><div class="legend"><strong style="font-family:var(--font-display);font-size:18px;margin-right:6px">' + rooms.length + ' rooms</strong>' +
-      (layout === '3d' ? '' : Object.keys(ROOM_STATUS).map(function (k) { return counts[k] ? pill(ROOM_STATUS[k].label + ' · ' + counts[k], ROOM_STATUS[k].cls) : ''; }).join('')) + '</div>' +
-      '<div class="seg" role="group" aria-label="Board layout">' + [['3d', 'Building'], ['grid', 'Cards']].map(function (o) { return '<button type="button" class="' + (layout === o[0] ? 'on' : '') + '" aria-pressed="' + (layout === o[0]) + '" onclick="setBoardLayout(\'' + o[0] + '\')">' + o[1] + '</button>'; }).join('') + '</div></div>' +
-      (layout === '3d' ? building3dHtml() : '<div class="rooms">' + rooms.map(roomCard).join('') + '</div>') + '</section>' +
+      building3dHtml() + '</section>' +
       '<aside class="narrow board-side"><div class="card"><h2>Needs attention</h2><div class="stack">' + alertList(al, 8) + '</div></div>' +
       '<div class="card"><h2>Arrivals and departures</h2>' + movesList(arrivals, departures) + '</div></aside></div>';
     return html;
   }
 };
-function boardLayout() { var v; try { v = localStorage.getItem('wiwe_board'); } catch (e) {} return v === 'grid' ? 'grid' : '3d'; }
-function setBoardLayout(v) { try { localStorage.setItem('wiwe_board', v); } catch (e) {} render(); }
+function boardLayout() { return '3d'; } // Cards layout removed in v2.3; the building picture is the only board
+function setBoardLayout() { render(); }
 // The building drawn floor by floor, top floor first, rooms left to right
 function buildingMap(rooms) {
   var floors = {};

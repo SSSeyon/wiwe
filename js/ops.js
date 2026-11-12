@@ -376,7 +376,7 @@ function invItems(kind) { return sortBy(S.data.items.filter(function (i) { retur
 VIEWS.inventory = {
   title: 'Inventory',
   actions: function () {
-    var sell = '<button class="btn primary" type="button" onclick="openSell()">Sell item</button>';
+    var sell = '<button class="btn primary" type="button" onclick="openSell()">Record sale</button>';
     if (!has('manager')) return sell;
     return actionMenu('Store', [['+ Receive stock', 'openReceive()'], ['Issue supplies', 'openIssue()'], ['Stock count', 'openStockCount()']]) + sell;
   },
@@ -404,7 +404,7 @@ VIEWS.inventory = {
       html += mgr ? '<div class="row"><button class="btn small" type="button" onclick="openItem(\'\',\'' + (sale ? 'sale' : 'supply') + '\')">+ New ' + (sale ? 'item for sale' : 'supply') + '</button></div>' : '';
       html += items.length ? '<div class="table-wrap"><table><thead><tr><th>Item</th><th>Category</th><th class="right">In store</th><th class="right">Reorder at</th>' + (mgr ? '<th class="right">Unit cost</th>' : '') + (sale ? '<th class="right">Selling price</th>' : '') + '<th></th></tr></thead><tbody>' + items.map(function (i) {
         var low = Number(i.qty) <= Number(i.reorderLevel || 0);
-        return '<tr' + (mgr ? ' class="clickable" onclick="openItem(\'' + i.id + '\')"' : '') + '><td><strong>' + esc(i.name) + '</strong></td><td>' + esc(ITEM_CATS[i.category] || '') + '</td><td class="right strong">' + i.qty + ' ' + esc(i.unit || '') + '</td><td class="right">' + (i.reorderLevel || 0) + '</td>' + (mgr ? '<td class="right money">' + money(i.unitCost) + '</td>' : '') + (sale ? '<td class="right money">' + money(i.sellPrice) + '</td>' : '') + '<td>' + (low ? pill('Reorder', 'st-bad') : pill('OK', 'st-ready')) + (sale && Number(i.qty) > 0 ? ' <button class="btn small" type="button" onclick="event.stopPropagation();openSell(\'' + i.id + '\')">Sell</button>' : '') + '</td></tr>';
+        return '<tr' + (mgr ? ' class="clickable" onclick="openItem(\'' + i.id + '\')"' : '') + '><td><strong>' + esc(i.name) + '</strong></td><td>' + esc(ITEM_CATS[i.category] || '') + '</td><td class="right strong">' + i.qty + ' ' + esc(i.unit || '') + '</td><td class="right">' + (i.reorderLevel || 0) + '</td>' + (mgr ? '<td class="right money">' + money(i.unitCost) + '</td>' : '') + (sale ? '<td class="right money">' + money(i.sellPrice) + '</td>' : '') + '<td>' + (low ? pill('Reorder', 'st-bad') : pill('OK', 'st-ready')) + (sale && Number(i.qty) > 0 ? ' <button class="btn small" type="button" onclick="event.stopPropagation();openSell(\'' + i.id + '\')">Record sale</button>' : '') + '</td></tr>';
       }).join('') + '</tbody></table></div>' : '<div class="card empty">' + (sale ? 'Nothing for sale yet. Add drinks, snacks, toiletries… with a selling price.' : 'No supplies yet.') + '</div>';
     }
     if (tab === 'sales') {
@@ -445,7 +445,7 @@ function openItem(id, kind) {
     field('Reorder when at or below', input('it-re', i.reorderLevel, 'type="number" min="0"')) + field('Unit cost (₦)', input('it-cost', i.unitCost, 'inputmode="numeric"'), '', 'What you pay for one') +
     '<div id="it-sell-wrap" class="' + (sale ? '' : 'hidden') + '">' + field('Selling price (₦)', input('it-sell', i.sellPrice, 'inputmode="numeric"'), '', 'What a guest pays for one') + '</div>' +
     (id ? info('In store now', i.qty + ' ' + (i.unit || '')) : field('Opening quantity', input('it-qty', 0, 'type="number" min="0"'))) +
-    '</div>' + (id ? '<div class="muted small">Quantity only changes through Receive, Issue, Sell or Stock count, so every change is recorded.</div>' : '') +
+    '</div>' + (id ? '<div class="muted small">Quantity only changes through Receive, Issue, Record sale or Stock count, so every change is recorded.</div>' : '') +
     '<div class="form-actions">' + (id && has('manager') ? '<button type="button" class="btn danger" onclick="archiveItem(\'' + id + '\')">Archive</button>' : '') + '<button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Save</button></div></form>';
   openModal(id ? i.name : (sale ? 'New item for sale' : 'New supply'), b);
 }
@@ -479,7 +479,7 @@ function openSell(itemId) {
     '<label class="choice" id="sl-bill-opt"><input type="radio" name="sl-pay" value="bill" onchange="slCalc()">Add to room bill</label></div>' +
     '<div class="fields" id="sl-ref-wrap">' + field('Reference', input('sl-ref', '', ''), '', 'Needed for transfer and POS') + '</div></fieldset>' +
     '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Record sale</button></div></form>';
-  openModal('Sell item', b); slCalc(true);
+  openModal('Record sale', b); slCalc(true);
 }
 function slCalc(itemChanged) {
   var it = byId(S.data.items, val('sl-item')); if (!it) return;
