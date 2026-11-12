@@ -1,6 +1,6 @@
 # Wiwe Apartments: Operations app · Handover
 
-Version 1.4.0 · Vanilla HTML/CSS/JS PWA · GitHub Pages + Firebase (Auth + Firestore)
+Version 1.5.0 · Vanilla HTML/CSS/JS PWA · GitHub Pages + Firebase (Auth + Firestore)
 
 ## 1. Go-live checklist
 
@@ -137,3 +137,18 @@ Timestamps are epoch milliseconds. Dates are `YYYY-MM-DD` strings in local (Lago
   - **Find a room**: turns the model to face the room, makes it flash, and states where it is, e.g. "first floor, back, middle"
 - **Building page:** a new nav item for every role, including housekeeping and maintenance. They see room numbers and statuses but not guest details, because the rules don't let them read stays.
 - **Room details** now show **Where** the room is, with a **Show on building** button.
+
+## 10. Flat building view (v1.5.0). Replaces sections 8 and 9.
+
+- **The 3D model is gone.** `js/building3d.js` and the three.js download were removed. `js/building.js` draws everything as plain SVG: instant, offline, and readable on phones.
+- **Orientation, confirmed by the owner:** the balcony/entrance face is the narrow face on the **road side**, and the building runs deep away from the road.
+- **Layout on every floor**, looking down with the road at the bottom:
+  - position 1: front left of the entrance (the tall louvred windows)
+  - position 2: front right (the smaller window)
+  - entrance and stairs between 1 and 2, with reception on the ground floor
+  - positions 3 and 4: middle left and middle right, either side of the corridor
+  - position 5: across the back
+- **"From the road":** the front face, floor by floor (Room 1 on the left, Room 2 on the right, arched balconies and entrance in the middle). Windows are coloured by status and carry number badges.
+- **Floor plans:** one per floor (or pick one). Each room shows its big number, status, the guest's first name (front desk only), a red ! when it needs attention, and its windows on the outside walls in the status colour.
+- **Find a room** highlights the room in pink and scrolls to it. Room details show "Where" with a "Show on building" button.
+- The Room board's Building layout and the Building page (all roles) both use this view.
