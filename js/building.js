@@ -33,42 +33,42 @@ function bpTile(r, x, y, w, h, front) {
   if (front) s += '<rect x="' + (x + 3) + '" y="' + (y + 3) + '" width="' + w + '" height="' + h + '" rx="7" fill="rgba(22,22,22,.22)"/>';
   s += '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + (front ? 7 : 5) + '" fill="' + c[2] + '" stroke="' + (front ? '#FFFFFF' : 'rgba(22,22,22,.45)') + '" stroke-width="' + (front ? 3 : 1.5) + '"/>';
   if (front) {
-    s += bpTxt(x + w / 2, y + h / 2 + 4, r.number, 24, c[3], 700);
-    s += bpTxt(x + w / 2, y + h / 2 + 19, ROOM_STATUS[st].label, 10, c[3], 600);
+    s += bpTxt(x + w / 2, y + h / 2 + 1, r.number, 18, c[3], 700);
+    s += bpTxt(x + w / 2, y + h / 2 + 14, ROOM_STATUS[st].label, 9, c[3], 600);
   } else {
-    s += bpTxt(x + w / 2, y + h / 2 + 6, r.number, 17, c[3], 700);
+    s += bpTxt(x + w / 2, y + h / 2 + 5, r.number, 13, c[3], 700);
   }
-  if (attn) s += '<circle cx="' + (x + w - 7) + '" cy="' + (y + 7) + '" r="8" fill="#A12626" stroke="#FFFFFF" stroke-width="1.5"/>' + bpTxt(x + w - 7, y + 11, '!', 11, '#FFFFFF', 700);
+  if (attn) s += '<circle cx="' + (x + w - 7) + '" cy="' + (y + 7) + '" r="6.5" fill="#A12626" stroke="#FFFFFF" stroke-width="1.5"/>' + bpTxt(x + w - 7, y + 11, '!', 9, '#FFFFFF', 700);
   if (focus) s += '<rect class="bp-focus" x="' + (x - 4) + '" y="' + (y - 4) + '" width="' + (w + 8) + '" height="' + (h + 8) + '" rx="9" fill="none" stroke="' + BP_FOCUS + '" stroke-width="4"/>';
   return s + '</g>';
 }
 
 function bpBuilding(by, nf) {
-  var FH = 104, top = 62, H = top + nf * FH;
-  var s = '<svg class="bp-svg" viewBox="-14 -4 328 ' + (H + 66) + '" role="group" aria-label="The Wiwe building seen from the road. Each floor shows its front rooms low and its back rooms raised behind them.">';
-  s += '<polygon points="18,56 282,56 236,8 64,8" fill="#5B3527"/>';
-  s += '<rect x="12" y="48" width="276" height="' + (top - 48 + 2) + '" fill="' + BP_WALL + '"/><rect x="8" y="44" width="284" height="7" fill="#3A3A3A"/>';
+  var FH = 70, top = 50, H = top + nf * FH;
+  var s = '<svg class="bp-svg" viewBox="-14 -4 328 ' + (H + 48) + '" role="group" aria-label="The Wiwe building seen from the road. Each floor shows its front rooms low and its back rooms raised behind them.">';
+  s += '<polygon points="18,44 282,44 236,10 64,10" fill="#5B3527"/>';
+  s += '<rect x="12" y="40" width="276" height="' + (top - 40 + 2) + '" fill="' + BP_WALL + '"/><rect x="8" y="36" width="284" height="6" fill="#3A3A3A"/>';
   s += '<rect x="12" y="' + top + '" width="276" height="' + (nf * FH) + '" fill="' + BP_WALL + '"/>';
   [12, 282].forEach(function (x) { s += '<rect x="' + x + '" y="' + top + '" width="6" height="' + (nf * FH) + '" fill="#FFFFFF" opacity=".9"/>'; });
   for (var f = nf - 1; f >= 0; f--) {
     var y = top + (nf - 1 - f) * FH, rs = by[f] || [];
     // back row: raised, smaller
-    s += '<rect x="22" y="' + (y + 6) + '" width="256" height="44" rx="4" fill="rgba(22,22,22,.06)"/>';
-    s += bpTile(rs[2], 26, y + 10, 70, 36, false) + bpTile(rs[3], 115, y + 10, 70, 36, false) + bpTile(rs[4], 204, y + 10, 70, 36, false);
+    s += '<rect x="22" y="' + (y + 4) + '" width="256" height="28" rx="4" fill="rgba(22,22,22,.06)"/>';
+    s += bpTile(rs[2], 26, y + 7, 70, 22, false) + bpTile(rs[3], 115, y + 7, 70, 22, false) + bpTile(rs[4], 204, y + 7, 70, 22, false);
     // arched balcony bay (entrance on the ground floor)
-    s += '<rect x="117" y="' + (y + 50) + '" width="66" height="' + (FH - 54) + '" fill="#E9D79B"/>';
-    s += '<path d="M124 ' + (y + FH - 5) + ' L124 ' + (y + 70) + ' Q150 ' + (y + 46) + ' 176 ' + (y + 70) + ' L176 ' + (y + FH - 5) + ' Z" fill="#6E5C3A"/>';
-    if (f === 0) s += '<rect x="134" y="' + (y + 70) + '" width="16" height="' + (FH - 75) + '" fill="#2B211B"/><rect x="155" y="' + (y + 74) + '" width="14" height="14" fill="#3F8F7F" stroke="#FFF" stroke-width="1.5"/>';
-    else { s += '<rect x="124" y="' + (y + FH - 24) + '" width="52" height="3" fill="' + BP_INK + '"/>'; for (var b = 0; b < 8; b++) s += '<rect x="' + (127 + b * 6.4) + '" y="' + (y + FH - 22) + '" width="1.6" height="17" fill="' + BP_INK + '"/>'; }
+    s += '<rect x="117" y="' + (y + 32) + '" width="66" height="' + (FH - 36) + '" fill="#E9D79B"/>';
+    s += '<path d="M124 ' + (y + FH - 5) + ' L124 ' + (y + 48) + ' Q150 ' + (y + 30) + ' 176 ' + (y + 48) + ' L176 ' + (y + FH - 5) + ' Z" fill="#6E5C3A"/>';
+    if (f === 0) s += '<rect x="134" y="' + (y + 47) + '" width="14" height="' + (FH - 52) + '" fill="#2B211B"/><rect x="155" y="' + (y + 50) + '" width="12" height="11" fill="#3F8F7F" stroke="#FFF" stroke-width="1.5"/>';
+    else { s += '<rect x="124" y="' + (y + FH - 18) + '" width="52" height="2.5" fill="' + BP_INK + '"/>'; for (var b = 0; b < 8; b++) s += '<rect x="' + (127 + b * 6.4) + '" y="' + (y + FH - 16) + '" width="1.5" height="11" fill="' + BP_INK + '"/>'; }
     // front row: lower, bigger
-    s += bpTile(rs[0], 22, y + 42, 88, FH - 50, true) + bpTile(rs[1], 190, y + 42, 88, FH - 50, true);
+    s += bpTile(rs[0], 22, y + 26, 88, FH - 30, true) + bpTile(rs[1], 190, y + 26, 88, FH - 30, true);
     // floor line and label
     s += '<rect x="12" y="' + (y + FH - 4) + '" width="276" height="4" fill="#D9BF72"/>';
     s += bpTxt(2, y + FH / 2 + 4, f === 0 ? 'G' : String(f), 12, '#7D7663', 700, 'end');
   }
   s += '<rect x="6" y="' + H + '" width="288" height="8" fill="#D9BF72"/>';
-  s += '<rect x="112" y="' + (H - 16) + '" width="76" height="13" rx="3" fill="' + BP_INK + '"/>' + bpTxt(150, H - 6, 'ENTRANCE', 9, '#F4E6B8', 700, 'middle', ' letter-spacing="1"');
-  s += '<rect x="40" y="' + (H + 24) + '" width="220" height="26" rx="13" fill="' + BP_INK + '"/>' + bpTxt(150, H + 42, '▲  ROAD · GATE  ▲', 12, '#F4E6B8', 700, 'middle', ' letter-spacing="1"');
+  s += '<rect x="112" y="' + (H + 2) + '" width="76" height="11" rx="3" fill="' + BP_INK + '"/>' + bpTxt(150, H + 10.5, 'ENTRANCE', 8, '#F4E6B8', 700, 'middle', ' letter-spacing="1"');
+  s += '<rect x="50" y="' + (H + 18) + '" width="200" height="22" rx="11" fill="' + BP_INK + '"/>' + bpTxt(150, H + 33, '▲  ROAD · GATE  ▲', 11, '#F4E6B8', 700, 'middle', ' letter-spacing="1"');
   return s + '</svg>';
 }
 
