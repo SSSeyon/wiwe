@@ -39,8 +39,8 @@ function bpTile(r, x, y, w, h, front) {
   if (front) s += '<rect x="' + (x + 1) + '" y="' + (y + 1.2) + '" width="' + w + '" height="' + h + '" rx="5" fill="rgba(22,22,22,.22)"/>';
   s += '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + (front ? 5 : 4) + '" fill="' + c[2] + '" stroke="' + (front ? 'rgba(255,255,255,.9)' : 'rgba(22,22,22,.35)') + '" stroke-width="' + (front ? 0.8 : 0.5) + '"/>';
   var kit = !!roomType(r).hasKitchen, isz = front ? 13 : 10;
-  s += bpKitchen(x + (front ? 6 : 5), y + (h - isz) / 2, isz, c[3], kit);
-  s += bpTxt(x + w / 2 + isz / 2 + 1, y + h / 2 + (front ? 5 : 4), r.number, front ? 14 : 11, c[3], 700);
+  if (kit) s += bpKitchen(x + (front ? 6 : 5), y + (h - isz) / 2, isz, c[3], true);
+  s += bpTxt(x + w / 2 + (kit ? isz / 2 + 1 : 0), y + h / 2 + (front ? 5 : 4), r.number, front ? 14 : 11, c[3], 700);
   if (attn) s += '<circle cx="' + (x + w - 5) + '" cy="' + (y + 5) + '" r="5" fill="#A12626" stroke="#FFFFFF" stroke-width="1.2"/>' + bpTxt(x + w - 5, y + 8, '!', 8, '#FFFFFF', 700);
   if (focus) s += '<rect class="bp-focus" x="' + (x - 3) + '" y="' + (y - 3) + '" width="' + (w + 6) + '" height="' + (h + 6) + '" rx="7" fill="none" stroke="' + BP_FOCUS + '" stroke-width="3"/>';
   return s + '</g>';
@@ -81,7 +81,7 @@ function buildingHtml() {
   var legend = [['ready', 'Ready'], ['occupied', 'Occupied'], ['reserved', 'Reserved today'], ['dirty', 'Dirty'], ['cleaning', 'Cleaning / inspection'], ['ooo', 'Out of order']];
   var fr = BP.focus && byId(S.data.rooms, BP.focus);
   return '<div class="bp-wrap">' +
-    '<div class="row between"><div class="b3d-legend" aria-label="Colour key">' + legend.map(function (l) { return '<span><i style="background:' + BP_COLORS[l[0]][2] + '"></i>' + l[1] + '</span>'; }).join('') + '<span><i style="background:#A12626;border-radius:999px"></i>Needs attention</span><span><svg width="14" height="14" viewBox="-1 -1 12 12" aria-hidden="true">' + bpKitchen(0, 0, 10, '#161616', true) + '</svg>Kitchen</span><span><svg width="14" height="14" viewBox="-2 -2 14 14" aria-hidden="true">' + bpKitchen(0, 0, 10, '#161616', false) + '</svg>No kitchen</span></div>' +
+    '<div class="row between"><div class="b3d-legend" aria-label="Colour key">' + legend.map(function (l) { return '<span><i style="background:' + BP_COLORS[l[0]][2] + '"></i>' + l[1] + '</span>'; }).join('') + '<span><i style="background:#A12626;border-radius:999px"></i>Needs attention</span><span><svg width="14" height="14" viewBox="-1 -1 12 12" aria-hidden="true">' + bpKitchen(0, 0, 10, '#161616', true) + '</svg>Kitchen</span></div>' +
     '<label class="sr-only" for="bp-find">Find a room</label><select id="bp-find" class="search bp-find" onchange="bpFocus(this.value)"><option value="">Find a room…</option>' +
     roomsSorted().map(function (r) { return '<option value="' + r.id + '"' + (BP.focus === r.id ? ' selected' : '') + '>Room ' + esc(r.number) + ' · ' + esc(floorName(roomFloor(r))) + '</option>'; }).join('') + '</select></div>' +
     (fr ? '<div class="note"><strong>Room ' + esc(fr.number) + '</strong>: ' + esc(roomWhere(fr)) + '. ' + pill(ROOM_STATUS[displayStatus(fr)].label, ROOM_STATUS[displayStatus(fr)].cls) + ' <button class="btn small" type="button" onclick="openRoom(\'' + fr.id + '\')">Open room</button> <button class="btn small" type="button" onclick="bpFocus(\'\')">Clear</button></div>' : '') +
