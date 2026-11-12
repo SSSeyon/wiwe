@@ -17,11 +17,11 @@ var BP_COLORS = {
 };
 // Plan is 300 wide (12 m) × 500 deep (20 m); y = 0 at the back, 500 at the road
 var BP_SLOTS = [
-  { x: 0, y: 300, w: 110, h: 200, where: 'front left, beside the entrance' },
-  { x: 190, y: 300, w: 110, h: 200, where: 'front right, beside the entrance' },
-  { x: 0, y: 130, w: 125, h: 170, where: 'middle left' },
-  { x: 175, y: 130, w: 125, h: 170, where: 'middle right' },
-  { x: 0, y: 0, w: 300, h: 130, where: 'at the back' }
+  { x: 0, y: 230, w: 110, h: 270, where: 'front left, beside the entrance' },
+  { x: 190, y: 230, w: 110, h: 270, where: 'front right, beside the entrance' },
+  { x: 0, y: 0, w: 100, h: 200, where: 'back row, left' },
+  { x: 100, y: 0, w: 100, h: 200, where: 'back row, middle' },
+  { x: 200, y: 0, w: 100, h: 200, where: 'back row, right' }
 ];
 var BP_INK = '#161616', BP_WALL = '#F3E2A9', BP_FOCUS = '#E5007E';
 
@@ -40,8 +40,8 @@ function bpPlan(f, rooms) {
   var s = '<svg class="bp-svg" viewBox="-14 -34 328 586" role="group" aria-label="' + esc(floorName(f)) + ' plan, road at the bottom">';
   s += '<rect x="0" y="0" width="300" height="500" fill="' + BP_WALL + '" stroke="' + BP_INK + '" stroke-width="4"/>';
   // corridor, stairs, entrance
-  s += '<rect x="125" y="130" width="50" height="170" fill="#EDE4CC"/><rect x="110" y="300" width="80" height="200" fill="' + (f === 0 ? '#E3DAC0' : '#EDE4CC') + '"/>';
-  s += bpTxt(150, 215, 'CORRIDOR', 11, '#6B6150', 700, 'middle', ' transform="rotate(-90 150 215)" letter-spacing="2"');
+  s += '<rect x="0" y="200" width="300" height="30" fill="#EDE4CC"/><rect x="110" y="230" width="80" height="270" fill="' + (f === 0 ? '#E3DAC0' : '#EDE4CC') + '"/>';
+  s += bpTxt(150, 219, 'CORRIDOR', 10, '#6B6150', 700, 'middle', ' letter-spacing="2"');
   for (var k = 0; k < 6; k++) s += '<line x1="122" x2="178" y1="' + (318 + k * 9) + '" y2="' + (318 + k * 9) + '" stroke="#B9AE8E" stroke-width="2"/>';
   s += bpTxt(150, 386, 'STAIRS', 11, '#6B6150', 700, 'middle', ' letter-spacing="1.5"');
   if (f === 0) s += bpTxt(150, 428, 'RECEPTION', 11, BP_INK, 700, 'middle', ' letter-spacing="1"');
@@ -68,8 +68,8 @@ function bpPlan(f, rooms) {
   var cols = BP_SLOTS.map(function (sl, i) { return rooms[i] ? bpCol(rooms[i])[2] : '#3F8F7F'; });
   s += win(22, 495, 22, 10, cols[0]) + win(64, 495, 22, 10, cols[0]) + win(-5, 390, 10, 34, cols[0]);
   s += win(228, 495, 40, 10, cols[1]) + win(295, 390, 10, 34, cols[1]);
-  s += win(-5, 200, 10, 34, cols[2]) + win(295, 200, 10, 34, cols[3]);
-  s += win(60, -5, 40, 10, cols[4]) + win(200, -5, 40, 10, cols[4]);
+  s += win(-5, 80, 10, 34, cols[2]) + win(295, 80, 10, 34, cols[4]);
+  s += win(30, -5, 40, 10, cols[2]) + win(130, -5, 40, 10, cols[3]) + win(230, -5, 40, 10, cols[4]);
   // orientation
   s += bpTxt(150, -14, 'BACK OF COMPOUND', 11, '#7D7663', 700, 'middle', ' letter-spacing="1.5"');
   s += '<rect x="40" y="516" width="220" height="26" rx="13" fill="' + BP_INK + '"/>' + bpTxt(150, 534, '▼  ROAD · GATE  ▼', 12, '#F4E6B8', 700, 'middle', ' letter-spacing="1"');
@@ -143,7 +143,7 @@ function buildingHtml() {
     roomsSorted().map(function (r) { return '<option value="' + r.id + '"' + (BP.focus === r.id ? ' selected' : '') + '>Room ' + esc(r.number) + ' · ' + esc(floorName(roomFloor(r))) + '</option>'; }).join('') + '</select></div></div>' +
     (fr ? '<div class="note"><strong>Room ' + esc(fr.number) + '</strong>: ' + esc(roomWhere(fr)) + '. ' + pill(ROOM_STATUS[displayStatus(fr)].label, ROOM_STATUS[displayStatus(fr)].cls) + ' <button class="btn small" type="button" onclick="openRoom(\'' + fr.id + '\')">Open room</button> <button class="btn small" type="button" onclick="BP.focus=null;render()">Clear</button></div>' : '') +
     '<div class="bp-grid">' +
-    '<section class="card bp-front"><h2>From the road</h2>' + bpFront(by, nf) + '<p class="muted small">The balconies and entrance face the road. Room 1 of each floor is on the left, Room 2 on the right.</p></section>' +
+    '<section class="card bp-front"><h2>From the road</h2>' + bpFront(by, nf) + '<p class="muted small">The balconies and entrance face the road. Room 1 of each floor is on the left, Room 2 on the right; Rooms 3, 4 and 5 are in a row across the back.</p></section>' +
     '<section class="bp-plans">' + floors.slice().reverse().map(function (f) { return '<div class="card bp-plan"><h2>' + esc(floorName(f)) + '</h2>' + bpPlan(f, by[f] || []) + '</div>'; }).join('') + '</section>' +
     '</div>' +
     '<div class="b3d-legend" aria-label="Colour key">' + legend.map(function (l) { return '<span><i style="background:' + BP_COLORS[l[0]][2] + '"></i>' + l[1] + '</span>'; }).join('') + '<span><i style="background:#A12626;border-radius:999px"></i>Needs attention</span></div>' +

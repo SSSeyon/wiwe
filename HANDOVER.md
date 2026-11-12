@@ -1,6 +1,6 @@
 # Wiwe Apartments: Operations app · Handover
 
-Version 1.5.0 · Vanilla HTML/CSS/JS PWA · GitHub Pages + Firebase (Auth + Firestore)
+Version 1.5.1 · Vanilla HTML/CSS/JS PWA · GitHub Pages + Firebase (Auth + Firestore)
 
 ## 1. Go-live checklist
 
@@ -146,8 +146,8 @@ Timestamps are epoch milliseconds. Dates are `YYYY-MM-DD` strings in local (Lago
   - position 1: front left of the entrance (the tall louvred windows)
   - position 2: front right (the smaller window)
   - entrance and stairs between 1 and 2, with reception on the ground floor
-  - positions 3 and 4: middle left and middle right, either side of the corridor
-  - position 5: across the back
+  - a corridor across the building behind rooms 1 and 2
+  - positions 3, 4 and 5: one row across the back, left to right as seen from the road (e.g. 103, 104, 105)
 - **"From the road":** the front face, floor by floor (Room 1 on the left, Room 2 on the right, arched balconies and entrance in the middle). Windows are coloured by status and carry number badges.
 - **Floor plans:** one per floor (or pick one). Each room shows its big number, status, the guest's first name (front desk only), a red ! when it needs attention, and its windows on the outside walls in the status colour.
 - **Find a room** highlights the room in pink and scrolls to it. Room details show "Where" with a "Show on building" button.

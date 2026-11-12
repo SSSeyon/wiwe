@@ -211,7 +211,7 @@ function openRoomEdit(id) {
   var b = '<form class="form" onsubmit="event.preventDefault();saveRoomEdit(\'' + (id || '') + '\')"><div class="fields">' +
     field('Room name / number', input('re-no', r.number, 'required')) + field('Type', '<select id="re-type">' + S.data.roomTypes.map(function (t) { return '<option value="' + t.id + '"' + (t.id === r.typeId ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join('') + '</select>') +
     field('Floor', '<select id="re-floor">' + opts(FLOOR_NAMES.map(function (n, i) { return { v: i, l: n }; }), id ? roomFloor(r) : Math.min(FLOOR_NAMES.length - 1, Math.floor(S.data.rooms.length / 5))) + '</select>') +
-    field('Position on floor', input('re-order', r.order || S.data.rooms.length + 1, 'type="number"'), '', '1 = front left of the entrance, 2 = front right, 3 = middle left, 4 = middle right, 5 = across the back (left and right as seen from the road)') +
+    field('Position on floor', input('re-order', r.order || S.data.rooms.length + 1, 'type="number"'), '', '1 = front left of the entrance, 2 = front right, then 3, 4, 5 = the back row from left to right (as seen from the road)') +
     '</div><div class="form-actions">' + (id ? '<button type="button" class="btn danger" onclick="archiveRoom(\'' + id + '\')">Remove room</button>' : '') + '<button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Save</button></div></form>';
   openModal(id ? 'Room ' + r.number : 'New room', b);
 }
