@@ -154,7 +154,7 @@ function failInspection(id) {
 function openRestock(taskId) {
   var items = sortBy(S.data.items.filter(function (i) { return !i.archived; }), function (i) { return i.name; });
   var b = '<form class="form" onsubmit="event.preventDefault();saveRestock(\'' + taskId + '\')"><div class="fields">' +
-    field('Item', '<select id="rs-item">' + items.map(function (i) { return '<option value="' + i.id + '">' + esc(i.name) + ' (' + i.qty + ' ' + esc(i.unit || '') + ' in store)</option>'; }).join('') + '</select>') +
+    field('Item', '<select id="rs-item">' + items.filter(function (i) { return !isSaleItem(i); }).map(function (i) { return '<option value="' + i.id + '">' + esc(i.name) + ' (' + i.qty + ' ' + esc(i.unit || '') + ' in store)</option>'; }).join('') + '</select>') +
     field('Quantity', input('rs-qty', 1, 'type="number" min="1" required')) +
     '</div><div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Add</button></div></form>';
   openModal('Restock item', b);
@@ -365,31 +365,51 @@ function saveVendor(id) {
 /* =========================================================
    INVENTORY: store stock, receiving, issuing, stock counts
    ========================================================= */
-var MOVE_TYPE = { purchase: ['Received', 'st-ready'], issue: ['Issued', 'st-occupied'], count: ['Count adjustment', 'st-alert'], adjust: ['Adjustment', 'st-ooo'] };
+var MOVE_TYPE = { purchase: ['Received', 'st-ready'], issue: ['Issued', 'st-occupied'], sale: ['Sold', 'st-reserved'], count: ['Count adjustment', 'st-alert'], adjust: ['Adjustment', 'st-ooo'] };
+// Two kinds of stock: supplies are used up running the place; "sale" items are sold to guests
+function isSaleItem(i) { return i.kind === 'sale'; }
+function invItems(kind) { return sortBy(S.data.items.filter(function (i) { return !i.archived && (kind === 'sale' ? isSaleItem(i) : kind === 'supply' ? !isSaleItem(i) : true); }), function (i) { return (i.category || '') + i.name; }); }
 VIEWS.inventory = {
   title: 'Inventory',
-  actions: function () { return '<button class="btn" type="button" onclick="openStockCount()">Stock count</button><button class="btn" type="button" onclick="openIssue()">Issue</button><button class="btn primary" type="button" onclick="openReceive()">+ Receive stock</button>'; },
+  actions: function () {
+    var sell = '<button class="btn primary" type="button" onclick="openSell()">Sell item</button>';
+    if (!has('manager')) return sell;
+    return '<button class="btn" type="button" onclick="openStockCount()">Stock count</button><button class="btn" type="button" onclick="openIssue()">Issue supplies</button><button class="btn" type="button" onclick="openReceive()">+ Receive stock</button>' + sell;
+  },
   render: function () {
-    var tab = curTab('inventory', 'stock'), items = sortBy(S.data.items.filter(function (i) { return !i.archived; }), function (i) { return (i.category || '') + i.name; });
-    var since = Date.now() - 30 * 86400000;
+    var mgr = has('manager'), list = mgr ? [['supplies', 'Supplies (for use)'], ['sale', 'For sale'], ['sales', 'Sales'], ['usage', 'Usage per night'], ['moves', 'Movements'], ['rooms', 'Room item lists']] : [['sale', 'For sale'], ['sales', 'Sales']];
+    var tab = curTab('inventory', mgr ? 'supplies' : 'sale'); if (!list.some(function (t) { return t[0] === tab; })) tab = list[0][0];
+    var sup = invItems('supply'), forSale = invItems('sale'), since = Date.now() - 30 * 86400000, month = todayStr().slice(0, 7);
     var issued = S.data.moves.filter(function (m) { return m.type === 'issue' && m.at > since; });
-    var staysOut = S.data.stays.filter(function (s) { return s.checkedOutAt > since; }).length;
+    var sales = S.data.moves.filter(function (m) { return m.type === 'sale'; });
+    var salesMonth = sales.filter(function (m) { return dateStr(new Date(m.at)).slice(0, 7) === month; });
     var nights = sum(S.data.stays.filter(function (s) { return (s.status === 'checked_out' && s.checkedOutAt > since) || s.status === 'checked_in'; }), function (s) { return s.nights; });
-    var value = sum(items, function (i) { return (i.qty || 0) * (i.unitCost || 0); });
-    var html = '<section class="grid-stats">' + stat('Items in store', items.length, '') + stat('Low stock', lowStock().length, 'At or below reorder level', lowStock().length ? 'warn' : '') + stat('Stock value', money(value), 'Qty × last unit cost') + stat('Issued (30 days)', issued.length + ' issues', staysOut + ' stays · ' + nights + ' nights') + '</section>';
-    html += tabs('inventory', [['stock', 'Stock'], ['usage', 'Usage per night'], ['moves', 'Movements'], ['rooms', 'Room item lists']]);
-    if (tab === 'stock') {
-      html += '<div class="row"><button class="btn small" type="button" onclick="openItem()">+ New item</button></div>';
-      html += items.length ? '<div class="table-wrap"><table><thead><tr><th>Item</th><th>Category</th><th class="right">In store</th><th class="right">Reorder at</th><th class="right">Unit cost</th><th></th></tr></thead><tbody>' + items.map(function (i) {
+    var lowSup = sup.filter(function (i) { return Number(i.qty) <= Number(i.reorderLevel || 0); }), lowSale = forSale.filter(function (i) { return Number(i.qty) <= Number(i.reorderLevel || 0); });
+    var html = '<section class="grid-stats">' +
+      (mgr ? stat('Supplies low', lowSup.length + ' of ' + sup.length, 'At or below reorder level', lowSup.length ? 'warn' : '') : '') +
+      stat('For-sale items low', lowSale.length + ' of ' + forSale.length, 'At or below reorder level', lowSale.length ? 'warn' : '') +
+      stat('Sales this month', money(sum(salesMonth, function (m) { return m.total; })), salesMonth.length + ' sales') +
+      (mgr ? stat('Sales profit this month', money(sum(salesMonth, function (m) { return m.total - (m.unitCost || 0) * -m.qty; })), 'Sale price minus cost') : '') +
+      '</section>';
+    html += tabs('inventory', list);
+    if (tab === 'supplies' || tab === 'sale') {
+      var items = tab === 'sale' ? forSale : sup, sale = tab === 'sale';
+      html += mgr ? '<div class="row"><button class="btn small" type="button" onclick="openItem(\'\',\'' + (sale ? 'sale' : 'supply') + '\')">+ New ' + (sale ? 'item for sale' : 'supply') + '</button></div>' : '';
+      html += items.length ? '<div class="table-wrap"><table><thead><tr><th>Item</th><th>Category</th><th class="right">In store</th><th class="right">Reorder at</th>' + (mgr ? '<th class="right">Unit cost</th>' : '') + (sale ? '<th class="right">Selling price</th>' : '') + '<th></th></tr></thead><tbody>' + items.map(function (i) {
         var low = Number(i.qty) <= Number(i.reorderLevel || 0);
-        return '<tr class="clickable" onclick="openItem(\'' + i.id + '\')"><td><strong>' + esc(i.name) + '</strong></td><td>' + esc(ITEM_CATS[i.category] || '') + '</td><td class="right strong">' + i.qty + ' ' + esc(i.unit || '') + '</td><td class="right">' + (i.reorderLevel || 0) + '</td><td class="right money">' + money(i.unitCost) + '</td><td>' + (low ? pill('Reorder', 'st-bad') : pill('OK', 'st-ready')) + '</td></tr>';
-      }).join('') + '</tbody></table></div>' : '<div class="card empty">No items yet.</div>';
+        return '<tr' + (mgr ? ' class="clickable" onclick="openItem(\'' + i.id + '\')"' : '') + '><td><strong>' + esc(i.name) + '</strong></td><td>' + esc(ITEM_CATS[i.category] || '') + '</td><td class="right strong">' + i.qty + ' ' + esc(i.unit || '') + '</td><td class="right">' + (i.reorderLevel || 0) + '</td>' + (mgr ? '<td class="right money">' + money(i.unitCost) + '</td>' : '') + (sale ? '<td class="right money">' + money(i.sellPrice) + '</td>' : '') + '<td>' + (low ? pill('Reorder', 'st-bad') : pill('OK', 'st-ready')) + (sale && Number(i.qty) > 0 ? ' <button class="btn small" type="button" onclick="event.stopPropagation();openSell(\'' + i.id + '\')">Sell</button>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' : '<div class="card empty">' + (sale ? 'Nothing for sale yet. Add drinks, snacks, toiletries… with a selling price.' : 'No supplies yet.') + '</div>';
+    }
+    if (tab === 'sales') {
+      html += sales.length ? '<div class="table-wrap"><table><thead><tr><th>When</th><th>Item</th><th class="right">Qty</th><th class="right">Total</th><th>Buyer</th><th>Paid</th><th>By</th></tr></thead><tbody>' + sales.slice(0, 200).map(function (m) {
+        return '<tr><td>' + fmtDT(m.at) + '</td><td>' + esc(m.itemName) + '</td><td class="right">' + (-m.qty) + '</td><td class="right money">' + money(m.total) + '</td><td>' + esc(m.roomNo ? 'Room ' + m.roomNo + (m.guestName ? ' · ' + m.guestName : '') : (m.to || 'Walk-in')) + '</td><td>' + (m.onBill ? pill('On room bill', 'st-alert') : pill(PAY_METHODS[m.method] || 'Paid', 'st-ready')) + '</td><td>' + esc(m.byName || '') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' : '<div class="card empty">No sales yet.</div>';
     }
     if (tab === 'usage') {
-      html += '<div class="note">How much of each item leaves the store per guest night over the last 30 days. If a number jumps without more guests, ask why.</div>';
-      var rows = items.map(function (i) { var q = -sum(issued.filter(function (m) { return m.itemId === i.id; }), function (m) { return m.qty; }); return { i: i, q: q, per: nights ? q / nights : 0 }; }).filter(function (r) { return r.q > 0; });
+      html += '<div class="note">How much of each supply leaves the store per guest night over the last 30 days. If a number jumps without more guests, ask why.</div>';
+      var rows = sup.map(function (i) { var q = -sum(issued.filter(function (m) { return m.itemId === i.id; }), function (m) { return m.qty; }); return { i: i, q: q, per: nights ? q / nights : 0 }; }).filter(function (r) { return r.q > 0; });
       var max = Math.max.apply(null, rows.map(function (r) { return r.per; }).concat([0.0001]));
-      html += rows.length ? '<div class="card"><div class="bars">' + sortBy(rows, function (r) { return r.per; }, true).map(function (r) { return '<div class="bar-row"><span>' + esc(r.i.name) + '</span><span class="bar-track"><span style="width:' + Math.round(r.per / max * 100) + '%"></span></span><span class="right">' + r.per.toFixed(2) + ' / night</span></div>'; }).join('') + '</div><div class="muted small" style="margin-top:10px">' + nights + ' guest nights in the period.</div></div>' : '<div class="card empty">No items issued in the last 30 days.</div>';
+      html += rows.length ? '<div class="card"><div class="bars">' + sortBy(rows, function (r) { return r.per; }, true).map(function (r) { return '<div class="bar-row"><span>' + esc(r.i.name) + '</span><span class="bar-track"><span style="width:' + Math.round(r.per / max * 100) + '%"></span></span><span class="right">' + r.per.toFixed(2) + ' / night</span></div>'; }).join('') + '</div><div class="muted small" style="margin-top:10px">' + nights + ' guest nights in the period.</div></div>' : '<div class="card empty">No supplies issued in the last 30 days.</div>';
     }
     if (tab === 'moves') {
       html += S.data.moves.length ? '<div class="table-wrap"><table><thead><tr><th>When</th><th>Item</th><th>Type</th><th class="right">Qty</th><th>Room / to</th><th>By</th></tr></thead><tbody>' + S.data.moves.slice(0, 200).map(function (m) {
@@ -404,19 +424,28 @@ VIEWS.inventory = {
     return html;
   }
 };
-function itemOptions() { return sortBy(S.data.items.filter(function (i) { return !i.archived; }), function (i) { return i.name; }).map(function (i) { return '<option value="' + i.id + '">' + esc(i.name) + ' (' + i.qty + ' ' + esc(i.unit || '') + ')</option>'; }).join(''); }
-function openItem(id) {
-  var i = byId(S.data.items, id) || {};
+function itemOptions(kind) {
+  function o(i) { return '<option value="' + i.id + '">' + esc(i.name) + ' (' + i.qty + ' ' + esc(i.unit || '') + ')</option>'; }
+  if (kind) return invItems(kind).map(o).join('');
+  return '<optgroup label="Supplies (for use)">' + invItems('supply').map(o).join('') + '</optgroup><optgroup label="For sale">' + invItems('sale').map(o).join('') + '</optgroup>';
+}
+function openItem(id, kind) {
+  var i = byId(S.data.items, id) || { kind: kind === 'sale' ? 'sale' : 'supply' }, sale = isSaleItem(i);
   var b = '<form class="form" onsubmit="event.preventDefault();saveItem(\'' + (id || '') + '\')"><div class="fields">' +
-    field('Name', input('it-name', i.name, 'required')) + field('Category', '<select id="it-cat">' + objOpts(ITEM_CATS, i.category) + '</select>') + field('Unit', input('it-unit', i.unit, 'placeholder="bottles, pcs, kg"')) +
-    field('Reorder when at or below', input('it-re', i.reorderLevel, 'type="number" min="0"')) + field('Unit cost (₦)', input('it-cost', i.unitCost, 'inputmode="numeric"')) +
+    field('Name', input('it-name', i.name, 'required')) +
+    field('Type', '<select id="it-kind" onchange="$(\'it-sell-wrap\').classList.toggle(\'hidden\',this.value!==\'sale\')">' + opts([{ v: 'supply', l: 'Supply (for use)' }, { v: 'sale', l: 'For sale to guests' }], sale ? 'sale' : 'supply') + '</select>') +
+    field('Category', '<select id="it-cat">' + objOpts(ITEM_CATS, i.category || (sale ? 'drinks' : 'consumable')) + '</select>') + field('Unit', input('it-unit', i.unit, 'placeholder="bottles, pcs, kg"')) +
+    field('Reorder when at or below', input('it-re', i.reorderLevel, 'type="number" min="0"')) + field('Unit cost (₦)', input('it-cost', i.unitCost, 'inputmode="numeric"'), '', 'What you pay for one') +
+    '<div id="it-sell-wrap" class="' + (sale ? '' : 'hidden') + '">' + field('Selling price (₦)', input('it-sell', i.sellPrice, 'inputmode="numeric"'), '', 'What a guest pays for one') + '</div>' +
     (id ? info('In store now', i.qty + ' ' + (i.unit || '')) : field('Opening quantity', input('it-qty', 0, 'type="number" min="0"'))) +
-    '</div>' + (id ? '<div class="muted small">Quantity only changes through Receive, Issue or Stock count, so every change is recorded.</div>' : '') +
+    '</div>' + (id ? '<div class="muted small">Quantity only changes through Receive, Issue, Sell or Stock count, so every change is recorded.</div>' : '') +
     '<div class="form-actions">' + (id && has('manager') ? '<button type="button" class="btn danger" onclick="archiveItem(\'' + id + '\')">Archive</button>' : '') + '<button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Save</button></div></form>';
-  openModal(id ? i.name : 'New store item', b);
+  openModal(id ? i.name : (sale ? 'New item for sale' : 'New supply'), b);
 }
 function saveItem(id) {
-  var d = { name: val('it-name'), category: val('it-cat'), unit: val('it-unit'), reorderLevel: num(val('it-re')), unitCost: num(val('it-cost')), updatedAt: Date.now() };
+  var kind = val('it-kind');
+  var d = { name: val('it-name'), kind: kind, category: val('it-cat'), unit: val('it-unit'), reorderLevel: num(val('it-re')), unitCost: num(val('it-cost')), sellPrice: kind === 'sale' ? num(val('it-sell')) : 0, updatedAt: Date.now() };
+  if (kind === 'sale' && !d.sellPrice) return toast('Enter a selling price', true);
   if (id) db.collection('items').doc(id).update(d).catch(fail);
   else {
     var ref = db.collection('items').doc(), q = num(val('it-qty')), b = db.batch();
@@ -424,7 +453,47 @@ function saveItem(id) {
     if (q) b.set(db.collection('moves').doc(), Object.assign({ itemId: ref.id, itemName: d.name, type: 'adjust', qty: q, note: 'Opening stock' }, stamp()));
     b.commit().catch(fail);
   }
+  audit('item_saved', 'item', id || '', d.name + (kind === 'sale' ? ' · sells at ' + money(d.sellPrice) : ''));
   closeModal(); toast('Saved');
+}
+/* ---------- selling to guests ---------- */
+function openSell(itemId) {
+  var items = invItems('sale').filter(function (i) { return Number(i.qty) > 0; });
+  if (!items.length) return toast('Nothing for sale is in stock', true);
+  var guests = sortBy(staysByStatus('checked_in'), function (s) { return s.roomNo; });
+  var b = '<form class="form" onsubmit="event.preventDefault();saveSell()"><div class="fields">' +
+    field('Item', '<select id="sl-item" onchange="slCalc(true)">' + items.map(function (i) { return '<option value="' + i.id + '"' + (i.id === itemId ? ' selected' : '') + '>' + esc(i.name) + ' · ' + money(i.sellPrice) + ' (' + i.qty + ' left)</option>'; }).join('') + '</select>') +
+    field('Quantity', input('sl-qty', 1, 'type="number" min="1" required oninput="slCalc()"')) +
+    field('Price each (₦)', input('sl-price', '', 'inputmode="numeric" oninput="slCalc()"' + (has('manager') ? '' : ' readonly')), '', has('manager') ? '' : 'Set by the manager') +
+    '<div class="field">Total<span class="static strong" id="sl-total"></span></div>' +
+    field('Buyer', '<select id="sl-buyer" onchange="slCalc()"><option value="">Walk-in / not a guest</option>' + guests.map(function (s) { return '<option value="' + s.id + '">Room ' + esc(s.roomNo) + ' · ' + esc(s.guestName) + '</option>'; }).join('') + '</select>', 'full') +
+    '</div><fieldset class="group"><legend>Payment</legend><div class="choices" role="radiogroup" aria-label="Payment">' +
+    Object.keys(PAY_METHODS).map(function (k, n) { return '<label class="choice"><input type="radio" name="sl-pay" value="' + k + '"' + (n === 0 ? ' checked' : '') + ' onchange="slCalc()">' + PAY_METHODS[k] + '</label>'; }).join('') +
+    '<label class="choice" id="sl-bill-opt"><input type="radio" name="sl-pay" value="bill" onchange="slCalc()">Add to room bill</label></div>' +
+    '<div class="fields" id="sl-ref-wrap">' + field('Reference', input('sl-ref', '', ''), '', 'Needed for transfer and POS') + '</div></fieldset>' +
+    '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Record sale</button></div></form>';
+  openModal('Sell item', b); slCalc(true);
+}
+function slCalc(itemChanged) {
+  var it = byId(S.data.items, val('sl-item')); if (!it) return;
+  if (itemChanged || !val('sl-price')) $('sl-price').value = it.sellPrice || 0;
+  $('sl-total').textContent = money(num(val('sl-qty')) * num(val('sl-price')));
+  var guest = val('sl-buyer'); $('sl-bill-opt').classList.toggle('hidden', !guest);
+  if (!guest && radio('sl-pay') === 'bill') document.querySelector('input[name="sl-pay"][value="transfer"]').checked = true;
+  $('sl-ref-wrap').classList.toggle('hidden', ['transfer', 'pos'].indexOf(radio('sl-pay')) < 0);
+}
+function saveSell() {
+  var it = byId(S.data.items, val('sl-item')), q = Math.max(1, num(val('sl-qty'))), price = num(val('sl-price')), total = q * price, pay = radio('sl-pay'), stay = byId(S.data.stays, val('sl-buyer'));
+  if (q > it.qty) return toast('Only ' + it.qty + ' in stock', true);
+  if ((pay === 'transfer' || pay === 'pos') && !val('sl-ref')) return toast('Enter the transfer or POS reference', true);
+  var b = db.batch(), mv = { itemId: it.id, itemName: it.name, type: 'sale', qty: -q, price: price, total: total, unitCost: it.unitCost || 0, roomNo: stay ? stay.roomNo : '', stayId: stay ? stay.id : '', guestName: stay ? stay.guestName : '', onBill: pay === 'bill', method: pay === 'bill' ? '' : pay };
+  b.update(db.collection('items').doc(it.id), { qty: FV.increment(-q) });
+  b.set(db.collection('moves').doc(), Object.assign(mv, stamp()));
+  if (pay === 'bill') b.update(db.collection('stays').doc(stay.id), { extras: (stay.extras || 0) + total, balance: (stay.balance || 0) + total });
+  else b.set(db.collection('payments').doc(), Object.assign({ stayId: stay ? stay.id : '', roomNo: stay ? stay.roomNo : '', guestName: stay ? stay.guestName : 'Walk-in', amount: total, kind: 'sale', method: pay, sender: '', ref: val('sl-ref'), photos: [], status: 'unconfirmed', note: it.name + ' × ' + q }, stamp()));
+  b.commit().catch(fail);
+  audit('item_sold', 'item', it.id, it.name + ' × ' + q + ' · ' + money(total) + (stay ? ' · Room ' + stay.roomNo : '') + (pay === 'bill' ? ' · on room bill' : ''));
+  closeModal(); toast('Sold: ' + it.name + ' × ' + q + (pay === 'bill' ? ' (added to the room bill)' : ''));
 }
 function archiveItem(id) { if (!confirm('Archive this item? It will be hidden from lists.')) return; db.collection('items').doc(id).update({ archived: true }).catch(fail); closeModal(); }
 function openReceive() {
@@ -448,7 +517,7 @@ function saveReceive() {
 }
 function openIssue() {
   var b = '<form class="form" onsubmit="event.preventDefault();saveIssue()"><div class="fields">' +
-    field('Item', '<select id="is-item">' + itemOptions() + '</select>') + field('Quantity', input('is-qty', 1, 'type="number" min="1" required')) +
+    field('Item', '<select id="is-item">' + itemOptions('supply') + '</select>') + field('Quantity', input('is-qty', 1, 'type="number" min="1" required')) +
     field('For room', '<select id="is-room"><option value="">— Not for a room —</option>' + roomsSorted().map(function (r) { return '<option value="' + r.number + '">Room ' + esc(r.number) + '</option>'; }).join('') + '</select>') +
     field('Given to / purpose', input('is-to', '', 'placeholder="e.g. Blessing, reception, laundry"')) +
     '</div><div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Issue</button></div></form>';

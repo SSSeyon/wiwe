@@ -69,7 +69,7 @@ async function loadReport(month) {
 }
 function reportHtml(R) {
   var rooms = roomsSorted(), pays = R.payments.filter(function (p) { return p.status !== 'void' && p.status !== 'rejected'; });
-  var revKinds = ['room', 'extension', 'balance', 'damage'];
+  var revKinds = ['room', 'extension', 'balance', 'damage', 'sale'];
   var revenue = sum(pays.filter(function (p) { return revKinds.indexOf(p.kind) >= 0; }), function (p) { return p.amount; });
   var confirmed = sum(pays.filter(function (p) { return revKinds.indexOf(p.kind) >= 0 && p.status === 'confirmed'; }), function (p) { return p.amount; });
   var exps = R.expenses.filter(function (e) { return e.status !== 'rejected' && e.status !== 'void'; }), spent = sum(exps, function (e) { return e.amount; });

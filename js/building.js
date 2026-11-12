@@ -30,45 +30,39 @@ function bpTile(r, x, y, w, h, front) {
   var s = '<g id="bp-' + r.id + '" role="button" tabindex="0" class="bp-room" aria-label="Room ' + esc(r.number) + ', ' + esc(ROOM_STATUS[st].label) + ', ' + esc(roomWhere(r)) + '"' +
     ' onclick="openRoom(\'' + r.id + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openRoom(\'' + r.id + '\')}">' +
     '<title>Room ' + esc(r.number) + ' · ' + esc(ROOM_STATUS[st].label) + (stay && st === 'occupied' ? ' · ' + esc(stay.guestName) : '') + '</title>';
-  if (front) s += '<rect x="' + (x + 3) + '" y="' + (y + 3) + '" width="' + w + '" height="' + h + '" rx="7" fill="rgba(22,22,22,.22)"/>';
-  s += '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + (front ? 7 : 5) + '" fill="' + c[2] + '" stroke="' + (front ? '#FFFFFF' : 'rgba(22,22,22,.45)') + '" stroke-width="' + (front ? 3 : 1.5) + '"/>';
-  if (front) {
-    s += bpTxt(x + w / 2, y + h / 2 + 1, r.number, 18, c[3], 700);
-    s += bpTxt(x + w / 2, y + h / 2 + 14, ROOM_STATUS[st].label, 9, c[3], 600);
-  } else {
-    s += bpTxt(x + w / 2, y + h / 2 + 5, r.number, 13, c[3], 700);
-  }
-  if (attn) s += '<circle cx="' + (x + w - 7) + '" cy="' + (y + 7) + '" r="6.5" fill="#A12626" stroke="#FFFFFF" stroke-width="1.5"/>' + bpTxt(x + w - 7, y + 11, '!', 9, '#FFFFFF', 700);
-  if (focus) s += '<rect class="bp-focus" x="' + (x - 4) + '" y="' + (y - 4) + '" width="' + (w + 8) + '" height="' + (h + 8) + '" rx="9" fill="none" stroke="' + BP_FOCUS + '" stroke-width="4"/>';
+  if (front) s += '<rect x="' + (x + 2) + '" y="' + (y + 2) + '" width="' + w + '" height="' + h + '" rx="5" fill="rgba(22,22,22,.22)"/>';
+  s += '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + (front ? 5 : 4) + '" fill="' + c[2] + '" stroke="' + (front ? '#FFFFFF' : 'rgba(22,22,22,.45)') + '" stroke-width="' + (front ? 2 : 1.2) + '"/>';
+  s += bpTxt(x + w / 2, y + h / 2 + (front ? 5 : 4), r.number, front ? 14 : 11, c[3], 700);
+  if (attn) s += '<circle cx="' + (x + w - 5) + '" cy="' + (y + 5) + '" r="5" fill="#A12626" stroke="#FFFFFF" stroke-width="1.2"/>' + bpTxt(x + w - 5, y + 8, '!', 8, '#FFFFFF', 700);
+  if (focus) s += '<rect class="bp-focus" x="' + (x - 3) + '" y="' + (y - 3) + '" width="' + (w + 6) + '" height="' + (h + 6) + '" rx="7" fill="none" stroke="' + BP_FOCUS + '" stroke-width="3"/>';
   return s + '</g>';
 }
 
 function bpBuilding(by, nf) {
-  var FH = 70, top = 50, H = top + nf * FH;
-  var s = '<svg class="bp-svg" viewBox="-14 -4 328 ' + (H + 48) + '" role="group" aria-label="The Wiwe building seen from the road. Each floor shows its front rooms low and its back rooms raised behind them.">';
-  s += '<polygon points="18,44 282,44 236,10 64,10" fill="#5B3527"/>';
-  s += '<rect x="12" y="40" width="276" height="' + (top - 40 + 2) + '" fill="' + BP_WALL + '"/><rect x="8" y="36" width="284" height="6" fill="#3A3A3A"/>';
+  var FH = 52, top = 42, H = top + nf * FH;
+  var s = '<svg class="bp-svg" viewBox="-14 -2 328 ' + (H + 20) + '" role="group" aria-label="The Wiwe building seen from the road. Each floor shows its front rooms low and its back rooms raised behind them.">';
+  s += '<polygon points="18,37 282,37 238,8 62,8" fill="#5B3527"/>';
+  s += '<rect x="12" y="34" width="276" height="' + (top - 34 + 2) + '" fill="' + BP_WALL + '"/><rect x="8" y="31" width="284" height="5" fill="#3A3A3A"/>';
   s += '<rect x="12" y="' + top + '" width="276" height="' + (nf * FH) + '" fill="' + BP_WALL + '"/>';
-  [12, 282].forEach(function (x) { s += '<rect x="' + x + '" y="' + top + '" width="6" height="' + (nf * FH) + '" fill="#FFFFFF" opacity=".9"/>'; });
+  [12, 282].forEach(function (x) { s += '<rect x="' + x + '" y="' + top + '" width="5" height="' + (nf * FH) + '" fill="#FFFFFF" opacity=".9"/>'; });
   for (var f = nf - 1; f >= 0; f--) {
     var y = top + (nf - 1 - f) * FH, rs = by[f] || [];
     // back row: raised, smaller
-    s += '<rect x="22" y="' + (y + 4) + '" width="256" height="28" rx="4" fill="rgba(22,22,22,.06)"/>';
-    s += bpTile(rs[2], 26, y + 7, 70, 22, false) + bpTile(rs[3], 115, y + 7, 70, 22, false) + bpTile(rs[4], 204, y + 7, 70, 22, false);
+    s += '<rect x="24" y="' + (y + 3) + '" width="252" height="22" rx="3" fill="rgba(22,22,22,.06)"/>';
+    s += bpTile(rs[2], 34, y + 5, 62, 18, false) + bpTile(rs[3], 119, y + 5, 62, 18, false) + bpTile(rs[4], 204, y + 5, 62, 18, false);
     // arched balcony bay (entrance on the ground floor)
-    s += '<rect x="117" y="' + (y + 32) + '" width="66" height="' + (FH - 36) + '" fill="#E9D79B"/>';
-    s += '<path d="M124 ' + (y + FH - 5) + ' L124 ' + (y + 48) + ' Q150 ' + (y + 30) + ' 176 ' + (y + 48) + ' L176 ' + (y + FH - 5) + ' Z" fill="#6E5C3A"/>';
-    if (f === 0) s += '<rect x="134" y="' + (y + 47) + '" width="14" height="' + (FH - 52) + '" fill="#2B211B"/><rect x="155" y="' + (y + 50) + '" width="12" height="11" fill="#3F8F7F" stroke="#FFF" stroke-width="1.5"/>';
-    else { s += '<rect x="124" y="' + (y + FH - 18) + '" width="52" height="2.5" fill="' + BP_INK + '"/>'; for (var b = 0; b < 8; b++) s += '<rect x="' + (127 + b * 6.4) + '" y="' + (y + FH - 16) + '" width="1.5" height="11" fill="' + BP_INK + '"/>'; }
+    s += '<rect x="119" y="' + (y + 25) + '" width="62" height="' + (FH - 28) + '" fill="#E9D79B"/>';
+    s += '<path d="M126 ' + (y + FH - 4) + ' L126 ' + (y + 36) + ' Q150 ' + (y + 22) + ' 174 ' + (y + 36) + ' L174 ' + (y + FH - 4) + ' Z" fill="#6E5C3A"/>';
+    if (f === 0) s += '<rect x="136" y="' + (y + 35) + '" width="11" height="' + (FH - 39) + '" fill="#2B211B"/><rect x="154" y="' + (y + 37) + '" width="10" height="8" fill="#3F8F7F" stroke="#FFF" stroke-width="1.2"/>';
+    else { s += '<rect x="126" y="' + (y + FH - 13) + '" width="48" height="2" fill="' + BP_INK + '"/>'; for (var b = 0; b < 8; b++) s += '<rect x="' + (128.5 + b * 6) + '" y="' + (y + FH - 12) + '" width="1.3" height="8" fill="' + BP_INK + '"/>'; }
     // front row: lower, bigger
-    s += bpTile(rs[0], 22, y + 26, 88, FH - 30, true) + bpTile(rs[1], 190, y + 26, 88, FH - 30, true);
+    s += bpTile(rs[0], 36, y + 22, 72, FH - 27, true) + bpTile(rs[1], 192, y + 22, 72, FH - 27, true);
     // floor line and label
-    s += '<rect x="12" y="' + (y + FH - 4) + '" width="276" height="4" fill="#D9BF72"/>';
-    s += bpTxt(2, y + FH / 2 + 4, f === 0 ? 'G' : String(f), 12, '#7D7663', 700, 'end');
+    s += '<rect x="12" y="' + (y + FH - 3) + '" width="276" height="3" fill="#D9BF72"/>';
+    s += bpTxt(2, y + FH / 2 + 4, f === 0 ? 'G' : String(f), 11, '#7D7663', 700, 'end');
   }
-  s += '<rect x="6" y="' + H + '" width="288" height="8" fill="#D9BF72"/>';
-  s += '<rect x="112" y="' + (H + 2) + '" width="76" height="11" rx="3" fill="' + BP_INK + '"/>' + bpTxt(150, H + 10.5, 'ENTRANCE', 8, '#F4E6B8', 700, 'middle', ' letter-spacing="1"');
-  s += '<rect x="50" y="' + (H + 18) + '" width="200" height="22" rx="11" fill="' + BP_INK + '"/>' + bpTxt(150, H + 33, '▲  ROAD · GATE  ▲', 11, '#F4E6B8', 700, 'middle', ' letter-spacing="1"');
+  s += '<rect x="6" y="' + H + '" width="288" height="6" fill="#D9BF72"/>';
+  s += '<rect x="114" y="' + (H + 3) + '" width="72" height="11" rx="3" fill="' + BP_INK + '"/>' + bpTxt(150, H + 11.5, 'ENTRANCE', 8, '#F4E6B8', 700, 'middle', ' letter-spacing="1"');
   return s + '</svg>';
 }
 
@@ -85,9 +79,9 @@ function buildingHtml() {
     (fr ? '<div class="note"><strong>Room ' + esc(fr.number) + '</strong>: ' + esc(roomWhere(fr)) + '. ' + pill(ROOM_STATUS[displayStatus(fr)].label, ROOM_STATUS[displayStatus(fr)].cls) + ' <button class="btn small" type="button" onclick="openRoom(\'' + fr.id + '\')">Open room</button> <button class="btn small" type="button" onclick="bpFocus(\'\')">Clear</button></div>' : '') +
     '<div class="card bp-card">' + bpBuilding(by, nf) + '</div>' +
     (over.length ? '<div class="note warn">' + esc(over.join(', ')) + ' has more than 5 rooms; only the first 5 are drawn. Check floors in Admin settings → Rooms.</div>' : '') +
-    '<div class="muted small">Seen from the road. On each floor the two big tiles are the front rooms either side of the balcony; the raised row behind them is the back row. Tap any room to open it.</div></div>';
+    '</div>';
 }
-function bpFocus(id) { BP.focus = id || null; BP.scrolled = null; if (S.view !== 'building' && S.view !== 'board') go('building'); else render(); }
+function bpFocus(id) { BP.focus = id || null; BP.scrolled = null; try { localStorage.setItem('wiwe_board', '3d'); } catch (e) {} if (S.view !== 'board') go('board'); else render(); }
 // Called by core render() after every redraw
 function afterRender() {
   if (BP.focus && BP.scrolled !== BP.focus) {
@@ -97,8 +91,3 @@ function afterRender() {
 }
 // Names used by the rest of the app
 var building3dHtml = buildingHtml, b3dFocus = bpFocus;
-VIEWS.building = {
-  title: 'Building',
-  eyebrow: function () { return 'Wiwe Apartments · Onilude Street, Sowhe'; },
-  render: function () { return buildingHtml(); }
-};

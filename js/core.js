@@ -1,4 +1,4 @@
-const APP_VERSION = '1.6.1';
+const APP_VERSION = '1.7.0';
 
 /* =========================================================
    Constants
@@ -16,7 +16,7 @@ const ROOM_STATUS = {
 const PAY_METHODS = { transfer: 'Bank transfer', pos: 'POS', cash: 'Cash' };
 const ID_TYPES = ['NIN slip', "Driver's licence", 'International passport', "Voter's card", 'Other'];
 const EXPENSE_CATS = { diesel: 'Diesel / fuel', electricity: 'Electricity (prepaid)', repairs: 'Repairs', supplies: 'Supplies', salaries: 'Salaries', internet: 'Internet / TV', cleaning: 'Laundry / cleaning', security: 'Security', other: 'Other' };
-const ITEM_CATS = { consumable: 'Guest consumables', cleaning: 'Cleaning supplies', linen: 'Linen & towels', kitchen: 'Kitchen', maintenance: 'Maintenance parts', other: 'Other' };
+const ITEM_CATS = { consumable: 'Guest consumables', cleaning: 'Cleaning supplies', linen: 'Linen & towels', kitchen: 'Kitchen', maintenance: 'Maintenance parts', drinks: 'Drinks', snacks: 'Snacks & food', toiletries: 'Toiletries & personal care', other: 'Other' };
 const ASSET_CATS = ['Air conditioner', 'Generator', 'Inverter / solar', 'Fridge', 'Television', 'Cooker / microwave', 'Water heater', 'Water pump', 'Smart lock', 'Furniture', 'CCTV / security', 'Other'];
 
 const DEFAULT_SETTINGS = {
@@ -397,12 +397,11 @@ function alertList(list, limit) {
 var NAV = [
   { id: 'today', label: 'Today', roles: ['admin', 'manager'] },
   { id: 'board', label: 'Room board', roles: ['manager', 'frontdesk'] },
-  { id: 'building', label: 'Building', roles: ['manager', 'frontdesk', 'housekeeping', 'maintenance'] },
   { id: 'stays', label: 'Stays', roles: ['manager', 'frontdesk'] },
   { id: 'payments', label: 'Payments', roles: ['manager', 'frontdesk'] },
   { id: 'housekeeping', label: 'Housekeeping', roles: ['manager', 'frontdesk', 'housekeeping', 'maintenance'] },
   { id: 'maintenance', label: 'Maintenance', roles: ['manager', 'frontdesk', 'housekeeping', 'maintenance'] },
-  { id: 'inventory', label: 'Inventory', roles: ['manager'] },
+  { id: 'inventory', label: 'Inventory', roles: ['manager', 'frontdesk'] },
   { id: 'expenses', label: 'Expenses', roles: ['manager', 'frontdesk'] },
   { id: 'reports', label: 'Reports', roles: ['manager'] },
   { id: 'admin', label: 'Admin settings', roles: [] }

@@ -94,7 +94,7 @@ function openRoom(id) {
   var r = byId(S.data.rooms, id); if (!r) return;
   var st = displayStatus(r), s = stayOf(r), type = roomType(r), b = '';
   b += '<div class="row">' + pill(ROOM_STATUS[st].label, ROOM_STATUS[st].cls) + '<span class="muted">' + esc(type.name) + ' · ' + money(type.rate) + ' per night</span></div>' +
-    '<div class="row between"><span class="muted">Where: <strong style="color:var(--text)">' + esc(typeof roomWhere === 'function' ? roomWhere(r) : floorName(roomFloor(r))) + '</strong></span><button class="btn small" type="button" onclick="closeModal();go(\'building\');setTimeout(function(){b3dFocus(\'' + r.id + '\')},50)">Show on building</button></div>';
+    '<div class="row between"><span class="muted">Where: <strong style="color:var(--text)">' + esc(typeof roomWhere === 'function' ? roomWhere(r) : floorName(roomFloor(r))) + '</strong></span>' + (canSee('board') && S.view !== 'board' ? '<button class="btn small" type="button" onclick="closeModal();b3dFocus(\'' + r.id + '\')">Show on room board</button>' : '') + '</div>';
   if (s) b += '<div class="card"><div class="row between"><div class="main-t"><strong>' + esc(s.guestName) + '</strong><div class="muted">' + fmtDate(s.checkInDate) + ' → ' + fmtDate(s.checkOutDate) + ' · ' + s.nights + ' night' + (s.nights > 1 ? 's' : '') + '</div></div><button class="btn small" type="button" onclick="openStay(\'' + s.id + '\')">Open stay</button></div></div>';
   var acts = [];
   if (has('manager', 'frontdesk')) {
@@ -260,6 +260,7 @@ function openStay(id) {
   b += '<div class="fields">' +
     info('Guest', s.guestName) + info('Phone', s.phone) + info('ID', (s.idType || '') + ' ' + (s.idNumber || '')) +
     info('Dates', fmtDate(s.checkInDate) + ' → ' + fmtDate(s.checkOutDate)) + info('Nights', s.nights) + info('Key card', (s.cardNo || '—') + (s.status === 'checked_out' ? (s.cardReturned ? ' · returned' : ' · NOT returned') : '')) +
+    (s.extras ? info('Items on bill', money(s.extras)) : '') +
     (s.total != null ? info('Room total', money(s.total) + (s.discount ? ' (incl. ' + money(s.discount) + ' discount, ' + s.discountStatus + ')' : '')) : '') +
     (s.total != null ? info('Balance', money(s.balance || 0)) : '') +
     (s.caution ? info('Caution fee', money(s.caution) + ' · ' + ({ held: 'held', refund_due: 'refund ' + money(s.cautionRefundDue) + ' due', refunded: 'refunded', none: '' }[s.cautionStatus] || '')) : '') +
@@ -418,7 +419,7 @@ VIEWS.stays = {
 
 /* ---------- Payments ---------- */
 var PAY_STATUS = { unconfirmed: ['Unconfirmed', 'st-alert'], confirmed: ['Confirmed', 'st-ready'], rejected: ['Not received', 'st-bad'], void: ['Void', 'st-ooo'] };
-var PAY_KIND = { room: 'Room', extension: 'Extension', balance: 'Balance', caution: 'Caution fee', damage: 'Damage', refund: 'Caution refund' };
+var PAY_KIND = { room: 'Room', extension: 'Extension', balance: 'Balance', caution: 'Caution fee', damage: 'Damage', refund: 'Caution refund', sale: 'Item sale' };
 function paymentRow(p) {
   var ps = PAY_STATUS[p.status] || ['', ''];
   var acts = '';

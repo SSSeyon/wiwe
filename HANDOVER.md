@@ -1,6 +1,6 @@
 # Wiwe Apartments: Operations app · Handover
 
-Version 1.6.0 · Vanilla HTML/CSS/JS PWA · GitHub Pages + Firebase (Auth + Firestore)
+Version 1.7.0 · Vanilla HTML/CSS/JS PWA · GitHub Pages + Firebase (Auth + Firestore)
 
 ## 1. Go-live checklist
 
@@ -160,3 +160,18 @@ Timestamps are epoch milliseconds. Dates are `YYYY-MM-DD` strings in local (Lago
   - **front row:** two big tiles (Rooms 1 and 2) either side of the arched balcony bay, with ENTRANCE on the ground floor, a status word, a shadow, and a red ! when the room needs attention
   - **back row:** three smaller tiles (Rooms 3, 4, 5, left to right as seen from the road) raised above and behind the front tiles
 - **Find a room** outlines the tile in pink and scrolls to it. Tapping a tile opens the room. Room details still say "Where" (e.g. "First floor, back row, middle").
+
+## 12. v1.7.0
+
+- **Building picture is smaller.** Front and back tiles show the number only, and the colour shows the status. There's no road sign or caption.
+- **No Building page.** The picture lives on the Room board only. "Show on room board" in room details jumps there and highlights the room.
+- **Inventory is split** by `items.kind`:
+  - `supply`: used to run the place. This is the default for old items.
+  - `sale`: sold to guests, with a `sellPrice`.
+- **Tabs:** Supplies (for use), For sale, Sales, Usage per night (supplies only), Movements, Room item lists. Front desk sees only For sale and Sales, and can sell.
+- **Sell item:**
+  - pick the item and quantity; the price defaults to the selling price, and only a manager can change it
+  - the buyer is a walk-in or an in-house guest
+  - payment is cash, transfer or POS, which creates a `payments` record of `kind: 'sale'` that the owner confirms; or **Add to room bill**, which adds to `stay.extras` and `stay.balance` to be collected at check-out
+  - every sale is a `moves` record with `type: 'sale'`, `total` and `unitCost`, so profit is visible
+- **Reports** count item sales as revenue.
