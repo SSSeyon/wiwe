@@ -5,7 +5,7 @@ Version 1.0.0 · Vanilla HTML/CSS/JS PWA · GitHub Pages + Firebase (Auth + Fire
 ## 1. Go-live checklist
 
 1. **Firebase project.** Create a project, then add a Web app and copy its config into `config.js`.
-2. **Authentication.** Go to Sign-in method and enable **Email/Password**. Staff never see an email: usernames become `username@wiwe.staff`.
+2. **Authentication.** Go to Sign-in method and enable **Email/Password**. This is only the engine underneath: staff sign in with a **username and password** and never see or need an email. Each account gets a hidden random login (`…@wiwe.staff`), and `usernames/{username}` points to it.
 3. **Authorized domains.** In Authentication → Settings, add `<you>.github.io`, plus your custom domain if you have one.
 4. **Firestore.** Create the database. Lagos has no region, so `europe-west` is closest. Paste `firestore.rules` into the Rules tab and **Publish**.
 5. **GitHub Pages.** Push the folder to a repo and enable Pages from `main` / root.
@@ -16,7 +16,7 @@ Version 1.0.0 · Vanilla HTML/CSS/JS PWA · GitHub Pages + Firebase (Auth + Fire
 7. **Admin settings.** Unlock with the admin code:
    - **Rooms and rates:** set the real rate per room type, rename rooms, and edit the item lists
    - **General:** caution fee amount, approval limit, check-in/out times
-   - **Staff:** add each staff member with a username, a 6-digit PIN and roles
+   - **Staff:** add accounts with a username, a password (6+ characters) and roles. Name accounts after the role (`frontdesk1`, `cleaner1`) so they can be handed over
 8. **Store and assets.** Enter opening stock in Inventory (Stock count works well for this). Add assets in Maintenance → Assets (ACs, generator, fridges, TVs, inverter, pump), with service intervals.
 
 No paid Firebase plan is needed. Photos are compressed on the phone (about 100 KB each) and stored in Firestore, so Cloud Storage isn't used.
@@ -87,7 +87,7 @@ Timestamps are epoch milliseconds. Dates are `YYYY-MM-DD` strings in local (Lago
 
 ## 6. Known limits and next ideas
 
-- **Forgotten PINs** can't be reset from the app, because the Firebase client SDK can't set another user's password. Reset the PIN in the Firebase console, or disable the account and create a new one.
+- **Handing over an account / forgotten password.** In Admin settings → Staff → **Hand over / reset password**, the owner creates a fresh hidden login for the same username, with the same roles and a new password. The old login is deactivated at once. The previous holder's user record stays (inactive), so everything they did is still attributed to them. Everyone can change their own password with the key button next to their name.
 - **Live lists** hold the most recent 300–600 records. Reports query Firestore directly by month, so they're complete.
 - **Ideas for later:**
   - WhatsApp/SMS check-in messages to guests

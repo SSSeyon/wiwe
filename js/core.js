@@ -1,4 +1,4 @@
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 
 /* =========================================================
    Constants
@@ -117,6 +117,7 @@ var ICONS = {
   expenses: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
   reports: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   admin: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  key: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3L21 2M16 7l3 3M19 4l2 2"/>',
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
   moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'
@@ -201,7 +202,13 @@ function audit(action, entity, entityId, details) {
 /* =========================================================
    Auth: login, first-time setup
    ========================================================= */
-function emailFor(username) { return String(username).trim().toLowerCase().replace(/[^a-z0-9._-]/g, '') + '@' + LOGIN_DOMAIN; }
+/* Staff only ever see a username and password. Behind the scenes Firebase needs an
+   email-shaped login, so each account gets a random hidden one, and usernames/{username}
+   points to it. Handing an account over to a new person re-points the username to a
+   fresh login, so the old person's password stops working and their history is kept. */
+function cleanUsername(u) { return String(u || '').trim().toLowerCase().replace(/[^a-z0-9._-]/g, ''); }
+function newLoginEmail() { return 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8) + '@' + LOGIN_DOMAIN; }
+function validPassword(p) { return String(p || '').length >= 6; }
 
 function showLogin(mode, msg) {
   $('boot').classList.add('hidden'); $('app').classList.add('hidden'); $('login').classList.remove('hidden');
@@ -216,8 +223,8 @@ function showLogin(mode, msg) {
       '<form class="form" onsubmit="event.preventDefault();doSetup()">' +
       field('Your name', input('su-name', '', 'required autocomplete="name"')) +
       field('Username', input('su-user', '', 'required autocapitalize="none" autocomplete="username"'), '', 'Letters and numbers only, e.g. owner') +
-      field('Login PIN (6 digits)', input('su-pin', '', 'required inputmode="numeric" pattern="[0-9]{6}" type="password" autocomplete="new-password"')) +
-      field('Admin code (6 digits)', input('su-code', '', 'required inputmode="numeric" pattern="[0-9]{6}" type="password"'), '', 'A separate code that unlocks admin settings. Keep it different from your PIN.') +
+      field('Password', input('su-pin', '', 'required minlength="6" type="password" autocomplete="new-password"'), '', 'At least 6 characters') +
+      field('Admin code (6 digits)', input('su-code', '', 'required inputmode="numeric" pattern="[0-9]{6}" type="password"'), '', 'A separate code that unlocks admin settings. Keep it different from your password.') +
       '<button class="btn primary block" type="submit" id="su-btn">Create owner account</button>' +
       '<button class="btn block" type="button" onclick="showLogin(\'login\')">I already have an account</button>' +
       (msg ? '<div class="note bad">' + esc(msg) + '</div>' : '') + '</form></div>';
@@ -227,7 +234,7 @@ function showLogin(mode, msg) {
     '<h2>Sign in</h2>' +
     '<form class="form" onsubmit="event.preventDefault();doLogin()">' +
     field('Username', input('li-user', '', 'required autocapitalize="none" autocomplete="username"')) +
-    field('PIN', input('li-pin', '', 'required inputmode="numeric" type="password" autocomplete="current-password"')) +
+    field('Password', input('li-pin', '', 'required type="password" autocomplete="current-password"')) +
     '<button class="btn primary block" type="submit" id="li-btn">Sign in</button>' +
     (msg ? '<div class="note bad">' + esc(msg) + '</div>' : '') +
     '<button class="btn block" type="button" onclick="checkSetup()">First time? Set up</button>' +
@@ -236,8 +243,11 @@ function showLogin(mode, msg) {
 
 async function doLogin() {
   var btn = $('li-btn'); btn.disabled = true; btn.textContent = 'Signing in…';
-  try { await auth.signInWithEmailAndPassword(emailFor(val('li-user')), val('li-pin')); }
-  catch (e) { showLogin('login', 'Wrong username or PIN.'); }
+  try {
+    var u = await db.collection('usernames').doc(cleanUsername(val('li-user'))).get();
+    if (!u.exists) throw new Error('no user');
+    await auth.signInWithEmailAndPassword(u.data().email, val('li-pin'));
+  } catch (e) { showLogin('login', 'Wrong username or password.'); }
 }
 
 async function checkSetup() {
@@ -249,13 +259,17 @@ async function checkSetup() {
 }
 
 async function doSetup() {
-  var name = val('su-name'), user = val('su-user'), pin = val('su-pin'), code = val('su-code');
-  if (!/^[0-9]{6}$/.test(pin) || !/^[0-9]{6}$/.test(code)) return showLogin('setup', 'PIN and admin code must be 6 digits.');
+  var name = val('su-name'), user = cleanUsername(val('su-user')), pin = val('su-pin'), code = val('su-code');
+  if (!user) return showLogin('setup', 'Choose a username (letters and numbers).');
+  if (!validPassword(pin)) return showLogin('setup', 'Password must be at least 6 characters.');
+  if (!/^[0-9]{6}$/.test(code)) return showLogin('setup', 'Admin code must be 6 digits.');
   $('su-btn').disabled = true; $('su-btn').textContent = 'Setting up…';
   try {
-    var cred = await auth.createUserWithEmailAndPassword(emailFor(user), pin);
+    var email = newLoginEmail();
+    var cred = await auth.createUserWithEmailAndPassword(email, pin);
     var uid = cred.user.uid, now = Date.now(), b = db.batch();
-    b.set(db.collection('users').doc(uid), { name: name, username: user.toLowerCase(), roles: ['admin'], active: true, createdAt: now });
+    b.set(db.collection('users').doc(uid), { name: name, username: user, roles: ['admin'], active: true, createdAt: now });
+    b.set(db.collection('usernames').doc(user), { uid: uid, email: email, at: now });
     b.set(db.collection('meta').doc('setup'), { done: true, by: uid, at: now });
     await b.commit();
     var b2 = db.batch();
@@ -415,8 +429,24 @@ function render() {
 }
 function paintMe() {
   $('meBox').innerHTML = '<div class="avatar">' + esc(initials(S.me.name)) + '</div><div class="me-text"><strong>' + esc(S.me.name) + '</strong><span>' + esc((S.me.roles || []).map(function (r) { return ROLES[r]; }).join(', ')) + '</span></div>' +
+    '<button class="icon-btn" type="button" aria-label="Change my password" title="Change my password" onclick="openMyPassword()">' + icon('key') + '</button>' +
     '<button class="icon-btn" type="button" aria-label="Sign out" title="Sign out" onclick="signOut()">' + icon('logout') + '</button>';
   paintDarkIcon();
+}
+function openMyPassword() {
+  var b = '<form class="form" onsubmit="event.preventDefault();changeMyPassword()"><div class="note">Signed in as <strong>@' + esc(S.me.username) + '</strong></div><div class="fields">' +
+    field('Current password', input('cp-old', '', 'type="password" required autocomplete="current-password"')) +
+    field('New password', input('cp-new', '', 'type="password" required minlength="6" autocomplete="new-password"'), '', 'At least 6 characters') +
+    '</div><div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" type="submit">Change password</button></div></form>';
+  toggleMenu(false); openModal('Change my password', b);
+}
+async function changeMyPassword() {
+  if (!validPassword(val('cp-new'))) return toast('Password must be at least 6 characters', true);
+  try {
+    var u = auth.currentUser;
+    await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email, val('cp-old')));
+    await u.updatePassword(val('cp-new')); audit('password_changed', 'user', S.user.uid, ''); closeModal(); toast('Password changed');
+  } catch (e) { fail(e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential' ? new Error('Current password is wrong') : e); }
 }
 
 /* =========================================================
@@ -429,7 +459,7 @@ function boot() {
     if (!user) { S.me = null; stopListeners(); return checkSetupOrLogin(); }
     var tries = 0, snap;
     while (tries < 5) { try { snap = await db.collection('users').doc(user.uid).get(); if (snap.exists) break; } catch (e) {} tries++; await new Promise(function (r) { setTimeout(r, 600); }); }
-    if (!snap || !snap.exists || snap.data().active === false) { await auth.signOut(); return showLogin('login', 'This account is not active. Ask the owner.'); }
+    if (!snap || !snap.exists || snap.data().active === false) { await auth.signOut(); return showLogin('login', 'This login is no longer active (handed over, reset or disabled). Ask the owner.'); }
     S.me = Object.assign({ id: user.uid }, snap.data());
     S.unsub.push(db.collection('users').doc(user.uid).onSnapshot(function (d) { if (d.exists) { S.me = Object.assign({ id: user.uid }, d.data()); if (S.me.active === false) auth.signOut(); paintMe(); scheduleRender(); } }));
     $('boot').classList.add('hidden'); $('login').classList.add('hidden'); $('app').classList.remove('hidden');

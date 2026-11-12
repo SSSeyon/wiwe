@@ -216,53 +216,98 @@ function saveRoomEdit(id) {
 function archiveRoom(id) { var r = byId(S.data.rooms, id); if (r.status === 'occupied') return toast('A guest is in this room', true); if (!confirm('Remove Room ' + r.number + ' from the board? History is kept.')) return; db.collection('rooms').doc(id).update({ archived: true }).catch(fail); audit('room_removed', 'room', id, r.number); closeModal(); }
 
 function adminStaff() {
-  return '<div class="card"><div class="card-head"><h2>Staff accounts</h2><button class="btn primary small" type="button" onclick="openStaff()">+ Add staff</button></div>' +
-    sortBy(S.data.users, function (u) { return (u.active === false ? 'z' : 'a') + u.name; }).map(function (u) { return '<div class="list-row clickable" onclick="openStaff(\'' + u.id + '\')"><span class="main-t"><strong>' + esc(u.name) + '</strong><span>@' + esc(u.username) + ' · ' + esc((u.roles || []).map(function (r) { return ROLES[r]; }).join(', ')) + '</span></span>' + (u.active === false ? pill('Disabled', 'st-ooo') : pill('Active', 'st-ready')) + '</div>'; }).join('') +
-    '</div><div class="note">Staff sign in with their username and 6-digit PIN. If someone forgets their PIN or leaves, disable the account. To reset a PIN, disable the old account and create a new one, or reset it in the Firebase console.</div>';
+  var active = sortBy(S.data.users.filter(function (u) { return u.active !== false; }), function (u) { return u.name; });
+  var past = sortBy(S.data.users.filter(function (u) { return u.active === false; }), function (u) { return -(u.endedAt || 0); });
+  return '<div class="card"><div class="card-head"><h2>Staff accounts</h2><button class="btn primary small" type="button" onclick="openStaff()">+ Add account</button></div>' +
+    active.map(function (u) {
+      var self = u.id === S.user.uid;
+      return '<div class="list-row"><span class="main-t"><strong>' + esc(u.name) + ' · @' + esc(u.username) + '</strong><span>' + esc((u.roles || []).map(function (r) { return ROLES[r]; }).join(', ')) + (u.handoverAt ? ' · holder since ' + fmtDate(u.handoverAt) : '') + '</span></span>' +
+        '<span class="row"><button class="btn small" type="button" onclick="openStaff(\'' + u.id + '\')">Edit</button>' + (self ? '' : '<button class="btn small" type="button" onclick="openHandover(\'' + u.id + '\')">Hand over / reset password</button>') + '</span></div>';
+    }).join('') + '</div>' +
+    '<div class="note">Staff sign in with a username and password. When someone leaves a role, use <strong>Hand over</strong>: the next person takes the same username with a new password, the old password stops working at once, and everything the previous person did stays recorded under their name. Use the same button with the same name if someone forgets their password.</div>' +
+    (past.length ? '<div class="card"><h2>Previous holders and disabled accounts</h2>' + past.map(function (u) {
+      var next = byId(S.data.users, u.handedOverTo);
+      return '<div class="list-row"><span class="main-t"><strong>' + esc(u.name) + ' · @' + esc(u.username) + '</strong><span>' + (u.endedReason === 'handover' ? 'Handed over' + (next ? ' to ' + esc(next.name) : '') : u.endedReason === 'password_reset' ? 'Password reset' : 'Disabled') + (u.endedAt ? ' · ' + fmtDate(u.endedAt) : '') + '</span></span>' + pill('Inactive', 'st-ooo') + '</div>';
+    }).join('') + '</div>' : '');
 }
+function roleChoices(roles, lockAdmin) {
+  return '<fieldset class="group"><legend>Roles</legend><div class="choices">' + Object.keys(ROLES).map(function (r) { return '<label class="choice"><input type="checkbox" name="sf-role" value="' + r + '"' + ((roles || []).indexOf(r) >= 0 ? ' checked' : '') + (lockAdmin && r === 'admin' ? ' disabled' : '') + '>' + ROLES[r] + '</label>'; }).join('') + '</div>' +
+    '<div class="muted small">Admin: everything · Manager: all operations, store, reports, verifies repairs · Front desk: check-in/out, stays, expenses · Housekeeping: cleaning tasks · Maintenance: repairs and assets</div></fieldset>';
+}
+function checkedRoles() { return Array.prototype.slice.call(document.querySelectorAll('input[name="sf-role"]:checked')).map(function (i) { return i.value; }); }
 function openStaff(id) {
   var u = byId(S.data.users, id) || { roles: [] }, self = id === S.user.uid;
   var b = '<form class="form" onsubmit="event.preventDefault();saveStaff(\'' + (id || '') + '\')"><div class="fields">' +
-    field('Full name', input('sf-name', u.name, 'required')) +
-    (id ? info('Username', '@' + u.username) : field('Username', input('sf-user', '', 'required autocapitalize="none"'), '', 'Letters and numbers, e.g. blessing') + field('PIN (6 digits)', input('sf-pin', '', 'required inputmode="numeric" pattern="[0-9]{6}"'), '', 'Tell them in person. They can change it later.')) +
-    field('Phone', input('sf-phone', u.phone, 'type="tel"')) + '</div>' +
-    '<fieldset class="group"><legend>Roles</legend><div class="choices">' + Object.keys(ROLES).map(function (r) { return '<label class="choice"><input type="checkbox" name="sf-role" value="' + r + '"' + ((u.roles || []).indexOf(r) >= 0 ? ' checked' : '') + (self && r === 'admin' ? ' disabled' : '') + '>' + ROLES[r] + '</label>'; }).join('') + '</div>' +
-    '<div class="muted small">Admin: everything · Manager: all operations, store, reports, verifies repairs · Front desk: check-in/out, stays, expenses · Housekeeping: cleaning tasks · Maintenance: repairs and assets</div></fieldset>' +
-    (id && !self ? '<label class="check"><input type="checkbox" id="sf-active"' + (u.active !== false ? ' checked' : '') + '>Account active (untick to block sign-in)</label>' : '') +
+    field(id ? 'Name of current holder' : 'Full name', input('sf-name', u.name, 'required')) +
+    (id ? info('Username', '@' + u.username) : field('Username', input('sf-user', '', 'required autocapitalize="none"'), '', 'Tip: name it after the role, e.g. frontdesk1, cleaner1, so it can be handed over') + field('Password', input('sf-pin', '', 'required minlength="6" type="text" autocomplete="off"'), '', 'At least 6 characters. Tell them in person.')) +
+    field('Phone', input('sf-phone', u.phone, 'type="tel"')) + '</div>' + roleChoices(u.roles, self) +
+    (id && !self ? '<label class="check"><input type="checkbox" id="sf-active" checked>Account active (untick to block sign-in without handing over)</label>' : '') +
     '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary" id="sf-save">Save</button></div></form>';
-  openModal(id ? u.name : 'Add staff', b);
+  openModal(id ? '@' + u.username : 'Add account', b);
+}
+// A second Firebase app creates logins without signing the owner out
+async function createLogin(password) {
+  var sec = firebase.apps.find(function (a) { return a.name === 'staffmaker'; }) || firebase.initializeApp(FIREBASE_CONFIG, 'staffmaker');
+  var email = newLoginEmail(), cred = await sec.auth().createUserWithEmailAndPassword(email, password);
+  var uid = cred.user.uid; await sec.auth().signOut();
+  return { uid: uid, email: email };
 }
 async function saveStaff(id) {
-  var roles = Array.prototype.slice.call(document.querySelectorAll('input[name="sf-role"]:checked')).map(function (i) { return i.value; });
+  var roles = checkedRoles();
   if (id === S.user.uid && roles.indexOf('admin') < 0) roles.push('admin');
   if (!roles.length) return toast('Pick at least one role', true);
   $('sf-save').disabled = true;
   try {
     if (id) {
       var d = { name: val('sf-name'), phone: val('sf-phone'), roles: roles };
-      if ($('sf-active')) d.active = val('sf-active');
-      await db.collection('users').doc(id).update(d); audit('staff_updated', 'user', id, d.name + ' · ' + roles.join(','));
+      if ($('sf-active') && !val('sf-active')) { d.active = false; d.endedReason = 'disabled'; d.endedAt = Date.now(); }
+      await db.collection('users').doc(id).update(d); audit('staff_updated', 'user', id, d.name + ' · ' + roles.join(',') + (d.active === false ? ' · disabled' : ''));
     } else {
-      var user = val('sf-user').toLowerCase(), pin = val('sf-pin');
-      if (!/^[0-9]{6}$/.test(pin)) { $('sf-save').disabled = false; return toast('PIN must be 6 digits', true); }
-      // A second Firebase app creates the account without signing the owner out
-      var sec = firebase.apps.find(function (a) { return a.name === 'staffmaker'; }) || firebase.initializeApp(FIREBASE_CONFIG, 'staffmaker');
-      var cred = await sec.auth().createUserWithEmailAndPassword(emailFor(user), pin);
-      var uid = cred.user.uid; await sec.auth().signOut();
-      await db.collection('users').doc(uid).set({ name: val('sf-name'), username: user, phone: val('sf-phone'), roles: roles, active: true, createdAt: Date.now(), createdBy: S.user.uid });
-      audit('staff_added', 'user', uid, val('sf-name') + ' · ' + roles.join(','));
+      var user = cleanUsername(val('sf-user')), pin = val('sf-pin');
+      if (!user) throw new Error('Choose a username (letters and numbers)');
+      if (!validPassword(pin)) throw new Error('Password must be at least 6 characters');
+      if ((await db.collection('usernames').doc(user).get()).exists) throw new Error('That username is already taken');
+      var login = await createLogin(pin), now = Date.now(), b = db.batch();
+      b.set(db.collection('users').doc(login.uid), { name: val('sf-name'), username: user, phone: val('sf-phone'), roles: roles, active: true, createdAt: now, createdBy: S.user.uid });
+      b.set(db.collection('usernames').doc(user), { uid: login.uid, email: login.email, at: now });
+      await b.commit();
+      audit('staff_added', 'user', login.uid, '@' + user + ' · ' + val('sf-name') + ' · ' + roles.join(','));
     }
     closeModal(); toast('Saved');
-  } catch (e) { $('sf-save').disabled = false; fail(e.code === 'auth/email-already-in-use' ? new Error('That username is taken') : e); }
+  } catch (e) { $('sf-save').disabled = false; fail(e); }
 }
-
+function openHandover(id) {
+  var u = byId(S.data.users, id);
+  var b = '<form class="form" onsubmit="event.preventDefault();saveHandover(\'' + id + '\')">' +
+    '<div class="note">Account <strong>@' + esc(u.username) + '</strong> · ' + esc((u.roles || []).map(function (r) { return ROLES[r]; }).join(', ')) + ' · held by ' + esc(u.name) + '</div>' +
+    '<div class="choices" role="radiogroup" aria-label="What is happening?">' +
+    '<label class="choice"><input type="radio" name="ho-kind" value="handover" checked onchange="$(\'ho-name\').value=\'\'">A new person is taking over</label>' +
+    '<label class="choice"><input type="radio" name="ho-kind" value="password_reset" onchange="$(\'ho-name\').value=' + esc(JSON.stringify(u.name)).replace(/"/g, '&quot;') + '">Same person, new password</label></div>' +
+    '<div class="fields">' + field("Holder's name", input('ho-name', '', 'required')) + field('Phone', input('ho-phone', '', 'type="tel"')) +
+    field('New password', input('ho-pin', '', 'required minlength="6" type="text" autocomplete="off"'), '', 'At least 6 characters. The old password stops working immediately.') + '</div>' +
+    '<div class="muted small">Same username and roles. Everything ' + esc(u.name) + ' did stays recorded under their name.</div>' +
+    '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary" id="ho-save">Confirm</button></div></form>';
+  openModal('Hand over @' + u.username, b);
+}
+async function saveHandover(id) {
+  var old = byId(S.data.users, id), kind = radio('ho-kind'), pin = val('ho-pin');
+  if (!validPassword(pin)) return toast('Password must be at least 6 characters', true);
+  $('ho-save').disabled = true;
+  try {
+    var login = await createLogin(pin), now = Date.now(), b = db.batch();
+    b.set(db.collection('users').doc(login.uid), { name: val('ho-name'), username: old.username, phone: val('ho-phone') || (kind === 'password_reset' ? old.phone || '' : ''), roles: old.roles || [], active: true, createdAt: now, createdBy: S.user.uid, previousUid: id, handoverAt: kind === 'handover' ? now : (old.handoverAt || old.createdAt || now) });
+    b.update(db.collection('users').doc(id), { active: false, endedReason: kind, endedAt: now, handedOverTo: login.uid });
+    b.set(db.collection('usernames').doc(old.username), { uid: login.uid, email: login.email, at: now });
+    await b.commit();
+    audit(kind === 'handover' ? 'account_handover' : 'password_reset', 'user', login.uid, '@' + old.username + (kind === 'handover' ? ' from ' + old.name + ' to ' + val('ho-name') : ' · ' + old.name));
+    closeModal(); toast(kind === 'handover' ? '@' + old.username + ' now belongs to ' + val('ho-name') : 'Password reset for @' + old.username);
+  } catch (e) { $('ho-save').disabled = false; fail(e); }
+}
 function adminSecurity() {
   return '<div class="card"><h2>Change admin code</h2><form class="form" onsubmit="event.preventDefault();changeCode()"><div class="fields">' +
     field('Current admin code', input('cc-old', '', 'type="password" inputmode="numeric" required')) + field('New admin code (6 digits)', input('cc-new', '', 'type="password" inputmode="numeric" pattern="[0-9]{6}" required')) +
     '</div><div class="form-actions"><button class="btn primary" type="submit">Change code</button></div></form></div>' +
-    '<div class="card"><h2>Change my login PIN</h2><form class="form" onsubmit="event.preventDefault();changePin()"><div class="fields">' +
-    field('Current PIN', input('cp-old', '', 'type="password" inputmode="numeric" required')) + field('New PIN (6 digits)', input('cp-new', '', 'type="password" inputmode="numeric" pattern="[0-9]{6}" required')) +
-    '</div><div class="form-actions"><button class="btn primary" type="submit">Change PIN</button></div></form></div>';
+    '<div class="card"><h2>My password</h2><p class="muted">Everyone can change their own password from the key button next to their name.</p><button class="btn" type="button" onclick="openMyPassword()">Change my password</button></div>';
 }
 async function changeCode() {
   try {
@@ -271,13 +316,6 @@ async function changeCode() {
     await db.collection('settings').doc('security').set({ codeHash: await sha256(val('cc-new') + '|wiwe-admin') });
     audit('admin_code_changed', 'settings', '', ''); toast('Admin code changed'); render();
   } catch (e) { fail(e); }
-}
-async function changePin() {
-  try {
-    var u = auth.currentUser;
-    await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email, val('cp-old')));
-    await u.updatePassword(val('cp-new')); toast('PIN changed'); render();
-  } catch (e) { fail(e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential' ? new Error('Current PIN is wrong') : e); }
 }
 function loadAudit() {
   db.collection('audit').orderBy('at', 'desc').limit(300).get().then(function (s) {

@@ -35,6 +35,18 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Username -> hidden login. Readable before sign-in so the login screen can find it.
+    // Only the owner can point a username at a new login (new account, hand over, reset password).
+    match /usernames/{name} {
+      allow read: if true;
+      allow create: if admin()
+        || (signedIn() && request.resource.data.uid == request.auth.uid
+            && !exists(/databases/$(database)/documents/meta/setup)
+            && existsAfter(/databases/$(database)/documents/meta/setup));
+      allow update: if admin();
+      allow delete: if false;
+    }
+
     match /settings/{doc} {
       allow read: if (active() && doc != 'security') || admin();
       allow write: if admin();
