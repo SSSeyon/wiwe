@@ -30,14 +30,14 @@ VIEWS.board = {
     html += '<div class="split"><section class="wide" aria-label="Rooms">' +
       '<div class="row between"><div class="legend"><strong style="font-family:var(--font-display);font-size:18px;margin-right:6px">' + rooms.length + ' rooms</strong>' +
       Object.keys(ROOM_STATUS).map(function (k) { return pill(ROOM_STATUS[k].label + ' · ' + (counts[k] || 0), ROOM_STATUS[k].cls); }).join('') + '</div>' +
-      '<div class="seg" role="group" aria-label="Board layout"><button type="button" class="' + (layout === 'floors' ? 'on' : '') + '" aria-pressed="' + (layout === 'floors') + '" onclick="setBoardLayout(\'floors\')">Building</button><button type="button" class="' + (layout === 'grid' ? 'on' : '') + '" aria-pressed="' + (layout === 'grid') + '" onclick="setBoardLayout(\'grid\')">Cards</button></div></div>' +
-      (layout === 'floors' ? buildingMap(rooms) : '<div class="rooms">' + rooms.map(roomCard).join('') + '</div>') + '</section>' +
+      '<div class="seg" role="group" aria-label="Board layout">' + [['3d', '3D building'], ['floors', 'Floors'], ['grid', 'Cards']].map(function (o) { return '<button type="button" class="' + (layout === o[0] ? 'on' : '') + '" aria-pressed="' + (layout === o[0]) + '" onclick="setBoardLayout(\'' + o[0] + '\')">' + o[1] + '</button>'; }).join('') + '</div></div>' +
+      (layout === '3d' ? building3dHtml() : layout === 'floors' ? buildingMap(rooms) : '<div class="rooms">' + rooms.map(roomCard).join('') + '</div>') + '</section>' +
       '<aside class="narrow"><div class="card"><h2>Needs attention</h2><div class="stack">' + alertList(al, 8) + '</div></div>' +
       '<div class="card"><h2>Arrivals and departures</h2>' + movesList(arrivals, departures) + '</div></aside></div>';
     return html;
   }
 };
-function boardLayout() { try { return localStorage.getItem('wiwe_board') || 'floors'; } catch (e) { return 'floors'; } }
+function boardLayout() { try { return localStorage.getItem('wiwe_board') || '3d'; } catch (e) { return '3d'; } }
 function setBoardLayout(v) { try { localStorage.setItem('wiwe_board', v); } catch (e) {} render(); }
 // The building drawn floor by floor, top floor first, rooms left to right
 function buildingMap(rooms) {

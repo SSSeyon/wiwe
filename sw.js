@@ -1,6 +1,6 @@
 // Bump CACHE when you deploy changes so phones pick up the new version.
-const CACHE = 'wiwe-v1.2.0';
-const SHELL = ['./', 'index.html', 'styles.css', 'config.js', 'js/core.js', 'js/front.js', 'js/ops.js', 'js/admin.js', 'manifest.json', 'img/icon-192.png', 'img/icon-512.png', 'img/logo.png', 'img/building.jpg'];
+const CACHE = 'wiwe-v1.3.0';
+const SHELL = ['./', 'index.html', 'styles.css', 'config.js', 'js/core.js', 'js/front.js', 'js/ops.js', 'js/admin.js', 'js/building3d.js', 'manifest.json', 'img/icon-192.png', 'img/icon-512.png', 'img/logo.png', 'img/building.jpg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -14,7 +14,7 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
   const sameOrigin = url.origin === self.location.origin;
-  const cdn = url.hostname === 'www.gstatic.com' || url.hostname.endsWith('fonts.googleapis.com') || url.hostname.endsWith('fonts.gstatic.com');
+  const cdn = url.hostname === 'www.gstatic.com' || url.hostname === 'cdnjs.cloudflare.com' || url.hostname.endsWith('fonts.googleapis.com') || url.hostname.endsWith('fonts.gstatic.com');
   if (!sameOrigin && !cdn) return;
   e.respondWith(
     fetch(e.request).then(res => {

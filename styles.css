@@ -277,3 +277,14 @@ body.dark-mode .floor-name{color:#CDBF91}
   .tile-st{font-size:10px}
   .tile-line,.tile-type{display:none}
 }
+
+/* ---------- 3D building ---------- */
+.b3d-wrap{display:flex;flex-direction:column;gap:10px}
+.b3d-host{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--border);background:#DCE7EF;min-height:320px}
+body.dark-mode .b3d-host{background:#1C2126}
+.b3d-stage{position:relative}
+.b3d-stage canvas{display:block;touch-action:pan-y;cursor:grab}
+.b3d-stage canvas:active{cursor:grabbing}
+.b3d-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.b3d-label{position:absolute;left:0;top:0;pointer-events:auto;font:inherit;font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;border:1.5px solid rgba(0,0,0,.28);cursor:pointer;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.18);min-height:26px}
+.b3d-label:hover{border-color:#161616}

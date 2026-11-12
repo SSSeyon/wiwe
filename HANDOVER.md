@@ -1,6 +1,6 @@
 # Wiwe Apartments: Operations app · Handover
 
-Version 1.2.0 · Vanilla HTML/CSS/JS PWA · GitHub Pages + Firebase (Auth + Firestore)
+Version 1.3.0 · Vanilla HTML/CSS/JS PWA · GitHub Pages + Firebase (Auth + Firestore)
 
 ## 1. Go-live checklist
 
@@ -107,3 +107,15 @@ Timestamps are epoch milliseconds. Dates are `YYYY-MM-DD` strings in local (Lago
   - Each room has a `floor` (0 = Ground). If it isn't set, the floor comes from the room's position: 5 rooms per floor, so 101–105 Ground, 106–110 First, 111–115 Second.
   - Set the floor and position in Admin settings → Rooms and rates → 2 · Rooms.
 - **Room types vs rooms:** a room type is a price category. Only **rooms** appear on the board. A type that no room uses can be deleted.
+
+## 8. 3D building (v1.3.0)
+
+- **Where:** `js/building3d.js`. It loads three.js r128 from cdnjs only when the 3D view opens, and the service worker caches it after first use.
+- **Model:** based on the real block at Onilude Street, Sowhe (6.41526, 2.88910). It's a 20 m × 12 m block with its long side facing the road (north). Three storeys at 3.2 m. Cream walls, white pilasters, green-framed windows, AC units, an arched stair/balcony bay at the west end of the front, a brown hipped roof with solar panels, and a compound wall with blue pillars, a black gate and a gatehouse.
+- **Room slots on every floor:** positions 1–2 face the road (west → east), positions 3–5 face the back (west → east). A room's floor and position come from Admin settings → Rooms; otherwise from board order, 5 per floor. Each room's windows (and its floor in the cut-away view) take its status colour, and the room-number labels open the room.
+- **Controls:**
+  - drag to rotate (vertical drag tilts the view with a mouse)
+  - scroll or pinch to zoom
+  - Front, Back and +/− buttons
+  - floor buttons that hide the floors above and the roof, to show the rooms from above
+- **Fallback:** if WebGL or the CDN isn't available, the 2D "Floors" layout is shown. The Room board also keeps "Floors" and "Cards" as layouts.

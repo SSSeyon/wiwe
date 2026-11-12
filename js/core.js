@@ -1,4 +1,4 @@
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 
 /* =========================================================
    Constants
@@ -434,6 +434,7 @@ function render() {
   window.scrollTo(0, y);
   if (active && $(active) && $('view').contains($(active))) { var el = $(active); el.focus(); if (el.setSelectionRange && el.type === 'search') { var l = el.value.length; el.setSelectionRange(l, l); } }
   hydratePhotos($('view'));
+  if (typeof afterRender === 'function') afterRender();
   document.title = (typeof v.title === 'function' ? v.title() : v.title) + ' · Wiwe';
 }
 function paintMe() {
