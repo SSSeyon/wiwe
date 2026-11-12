@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wiwe Apartments</title>
+<meta name="theme-color" content="#0E3B39">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="config.js"></script>
+<script src="js/core.js" defer></script>
+<script src="js/front.js" defer></script>
+<script src="js/ops.js" defer></script>
+<script src="js/admin.js" defer></script>
+</head>
+<body>
+
+<div id="boot" class="boot"><div class="logo-mark">W</div><span>Loading Wiwe…</span></div>
+
+<div id="login" class="login hidden"></div>
+
+<div id="app" class="app hidden">
+  <aside class="sidebar" id="sidebar" aria-label="Main">
+    <div class="brand">
+      <div class="logo-mark">W</div>
+      <div class="brand-text"><strong>Wiwe</strong><span>Apartments · Badagry</span></div>
+    </div>
+    <nav id="nav" class="nav"></nav>
+    <div class="side-foot">
+      <button class="nav-item" type="button" onclick="toggleDark()"><span id="darkIcon"></span><span>Dark mode</span></button>
+      <div class="me" id="meBox"></div>
+    </div>
+  </aside>
+  <div class="overlay" id="overlay" onclick="toggleMenu(false)"></div>
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn menu-btn" type="button" aria-label="Open menu" onclick="toggleMenu(true)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+      <div class="titles">
+        <span class="eyebrow" id="pageEyebrow"></span>
+        <h1 id="pageTitle"></h1>
+      </div>
+      <div class="top-actions">
+        <button type="button" class="sync" id="syncBadge" onclick="forceSync()"><span class="dot"></span><span id="syncText">Connecting…</span></button>
+        <div id="topActions" class="top-actions"></div>
+      </div>
+    </header>
+    <main id="view" class="content"></main>
+  </div>
+</div>
+
+<div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal-card" id="modalCard">
+    <div class="modal-head">
+      <h2 id="modalTitle"></h2>
+      <button class="icon-btn" type="button" aria-label="Close" onclick="closeModal()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div id="modalBody" class="modal-body"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<input type="file" id="photoInput" accept="image/*" capture="environment" hidden>
+</body>
+</html>

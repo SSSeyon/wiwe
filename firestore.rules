@@ -1,0 +1,145 @@
+rules_version = '2';
+// Wiwe Apartments: Firestore security rules.
+// Paste into Firebase console > Firestore Database > Rules, then Publish.
+// The app hides buttons by role, but THESE rules are what actually stop a staff member
+// from confirming their own payment or changing a rate, even through the browser console.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function userPath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function me() { return get(userPath()).data; }
+    function active() { return signedIn() && exists(userPath()) && me().active == true; }
+    function anyRole(list) { return active() && me().roles.hasAny(list.concat(['admin'])); }
+    function admin() { return active() && me().roles.hasAny(['admin']); }
+    function onlyChanges(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+    function settings() { return get(/databases/$(database)/documents/settings/general).data; }
+    function stampedByMe() { return request.resource.data.by == request.auth.uid; }
+
+    // First-time setup: the very first account becomes admin, once.
+    match /meta/setup {
+      allow read: if true;
+      allow create: if signedIn()
+        && !exists(/databases/$(database)/documents/meta/setup)
+        && getAfter(userPath()).data.roles.hasAny(['admin']);
+      allow update, delete: if false;
+    }
+
+    match /users/{uid} {
+      allow read: if active() || (signedIn() && request.auth.uid == uid);
+      allow create: if admin()
+        || (signedIn() && request.auth.uid == uid
+            && !exists(/databases/$(database)/documents/meta/setup)
+            && existsAfter(/databases/$(database)/documents/meta/setup));
+      allow update: if admin();
+      allow delete: if false;
+    }
+
+    match /settings/{doc} {
+      allow read: if (active() && doc != 'security') || admin();
+      allow write: if admin();
+    }
+
+    match /roomTypes/{id} {
+      allow read: if active();
+      allow write: if admin();
+    }
+
+    match /rooms/{id} {
+      allow read: if active();
+      allow create, delete: if admin();
+      allow update: if admin() || (active() && onlyChanges(['status', 'currentStayId', 'oooReason', 'readyAt']));
+    }
+
+    match /stays/{id} {
+      allow read: if anyRole(['manager', 'frontdesk']);
+      allow create: if anyRole(['manager', 'frontdesk']) && stampedByMe()
+        && (admin() || request.resource.data.get('discountStatus', 'none') in ['none', 'pending']);
+      allow update: if anyRole(['manager', 'frontdesk'])
+        && (admin()
+            || request.resource.data.get('discountStatus', 'none') in ['none', 'pending']
+            || request.resource.data.get('discountStatus', 'none') == resource.data.get('discountStatus', 'none'));
+      allow delete: if false;
+    }
+
+    // Front desk records payments as "unconfirmed". Only the owner confirms, rejects or voids.
+    match /payments/{id} {
+      allow read: if anyRole(['manager', 'frontdesk']);
+      allow create: if anyRole(['manager', 'frontdesk']) && stampedByMe()
+        && (request.resource.data.status == 'unconfirmed'
+            || admin()
+            || (request.resource.data.kind == 'refund' && anyRole(['manager'])));
+      allow update: if admin();
+      allow delete: if false;
+    }
+
+    match /tasks/{id} {
+      allow read, create, update: if active();
+      allow delete: if admin();
+    }
+
+    match /jobs/{id} {
+      allow read, create, update: if active();
+      allow delete: if false;
+    }
+
+    match /assets/{id} {
+      allow read: if active();
+      allow create: if anyRole(['manager', 'maintenance']);
+      allow update: if anyRole(['manager', 'maintenance']) || (active() && onlyChanges(['status']));
+      allow delete: if false;
+    }
+
+    match /vendors/{id} {
+      allow read: if active();
+      allow write: if anyRole(['manager', 'maintenance']);
+    }
+
+    // Store items: only managers edit items; anyone may change the quantity (restocking),
+    // and every change of quantity is recorded in "moves".
+    match /items/{id} {
+      allow read: if active();
+      allow create: if anyRole(['manager']);
+      allow update: if anyRole(['manager']) || (active() && onlyChanges(['qty']));
+      allow delete: if false;
+    }
+
+    match /moves/{id} {
+      allow read: if active();
+      allow create: if active() && stampedByMe();
+      allow update, delete: if false;
+    }
+
+    // Expenses above the approval limit must be saved as "pending".
+    match /expenses/{id} {
+      allow read: if anyRole(['manager', 'frontdesk']);
+      allow create: if active() && stampedByMe()
+        && (request.resource.data.status == 'pending'
+            || admin()
+            || (request.resource.data.status == 'approved' && request.resource.data.amount <= settings().approvalLimit));
+      allow update: if admin();
+      allow delete: if false;
+    }
+
+    match /incidents/{id} {
+      allow read: if anyRole(['manager', 'frontdesk']);
+      allow create: if active() && stampedByMe();
+      allow update: if anyRole(['manager']);
+      allow delete: if false;
+    }
+
+    match /photos/{id} {
+      allow read: if active();
+      allow create: if active() && stampedByMe() && request.resource.data.data.size() < 1000000;
+      allow update: if false;
+      allow delete: if admin();
+    }
+
+    // Activity log: anyone writes their own entries; nobody can edit or delete them.
+    match /audit/{id} {
+      allow read: if anyRole(['manager']);
+      allow create: if active() && stampedByMe();
+      allow update, delete: if false;
+    }
+  }
+}

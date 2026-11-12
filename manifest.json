@@ -1,0 +1,12 @@
+{
+  "name": "Wiwe Apartments",
+  "short_name": "Wiwe",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F4F2EE",
+  "theme_color": "#0E3B39",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
