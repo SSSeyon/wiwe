@@ -8,8 +8,12 @@
 import admin from 'firebase-admin';
 import nodemailer from 'nodemailer';
 
-const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || '{}');
-if (!sa.project_id) { console.error('FIREBASE_SERVICE_ACCOUNT secret is missing or invalid'); process.exit(1); }
+if (!process.env.FIREBASE_SERVICE_ACCOUNT || !process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD || !process.env.SUMMARY_TO) {
+  console.log('Daily summary email is not set up yet (secrets missing). See HANDOVER.md, "Daily summary email". Skipping.');
+  process.exit(0);
+}
+const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+if (!sa.project_id) { console.error('FIREBASE_SERVICE_ACCOUNT is not a valid service account JSON'); process.exit(1); }
 admin.initializeApp({ credential: admin.credential.cert(sa) });
 const db = admin.firestore();
 
