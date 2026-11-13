@@ -1,0 +1,24 @@
+name: Urgent alerts email
+
+on:
+  schedule:
+    - cron: '7 * * * *'    # about once an hour (GitHub may run it some minutes late)
+  workflow_dispatch: {}    # lets you run it by hand from the Actions tab
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install
+        run: npm install --no-save --no-package-lock firebase-admin@12.7.0 nodemailer@6.9.16
+      - name: Check and send
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          SUMMARY_TO: ${{ secrets.SUMMARY_TO }}
+        run: node scripts/urgent-alerts.mjs

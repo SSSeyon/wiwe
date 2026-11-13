@@ -1,4 +1,4 @@
-const APP_VERSION = '2.5.0';
+const APP_VERSION = '3.0.0';
 
 /* =========================================================
    Constants
@@ -13,7 +13,10 @@ const ROOM_STATUS = {
   inspect: { label: 'Inspection', cls: 'st-inspect' },
   ooo: { label: 'Out of order', cls: 'st-ooo' }
 };
-const PAY_METHODS = { transfer: 'Bank transfer', pos: 'POS', cash: 'Cash' };
+// Guests pay by POS (or bank transfer for deposits paid from far away). Cash is not accepted.
+const PAY_METHODS = { pos: 'POS', transfer: 'Bank transfer' };
+const PAY_LABEL = { pos: 'POS', transfer: 'Bank transfer', cash: 'Cash' }; // "cash" only on old records
+const SOURCES = { walkin: 'Walk-in', phone: 'Phone / WhatsApp', returning: 'Returning guest', referral: 'Agent / referral', airbnb: 'Airbnb', booking: 'Booking.com', other: 'Other' };
 const ID_TYPES = ['NIN slip', "Driver's licence", 'International passport', "Voter's card", 'Other'];
 const EXPENSE_CATS = { diesel: 'Diesel / fuel', electricity: 'Electricity (prepaid)', repairs: 'Repairs', supplies: 'Supplies', salaries: 'Salaries', internet: 'Internet / TV', cleaning: 'Laundry / cleaning', security: 'Security', other: 'Other' };
 const ITEM_CATS = { consumable: 'Guest consumables', cleaning: 'Cleaning supplies', linen: 'Linen & towels', kitchen: 'Kitchen', maintenance: 'Maintenance parts', drinks: 'Drinks', snacks: 'Snacks & food', toiletries: 'Toiletries & personal care', other: 'Other' };
@@ -42,6 +45,7 @@ const DEFAULT_SETTINGS = {
     'Air room, lock windows, switch off AC'
   ],
   dailyCleaning: true,
+  requireId: false,
   idPhotoMonths: 6,
   linenItems: ['Bedsheets', 'Pillowcases', 'Duvet covers', 'Bath towels', 'Hand towels'],
   dailySteps: ['Make bed', 'Empty bins', 'Tidy bathroom, replace towels if asked', 'Top up water and toiletries', 'Sweep floor']
@@ -52,7 +56,8 @@ const DEFAULT_SETTINGS = {
    ========================================================= */
 let db, auth, FV;
 const CONFIGURED = typeof FIREBASE_CONFIG !== 'undefined' && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey.indexOf('YOUR_') !== 0;
-if (CONFIGURED) {
+const SDK_OK = typeof firebase !== 'undefined'; // false when the Firebase files could not be loaded (no network, nothing cached)
+if (CONFIGURED && SDK_OK) {
   firebase.initializeApp(FIREBASE_CONFIG);
   auth = firebase.auth();
   db = firebase.firestore();
@@ -66,7 +71,7 @@ if (CONFIGURED) {
 const S = {
   user: null, me: null, view: null, params: {}, tab: {},
   settings: Object.assign({}, DEFAULT_SETTINGS),
-  data: { rooms: [], roomTypes: [], stays: [], payments: [], tasks: [], jobs: [], assets: [], vendors: [], items: [], moves: [], expenses: [], incidents: [], users: [], laundry: [], shifts: [], oldUnconfirmed: [], oldPending: [] },
+  data: { rooms: [], roomTypes: [], stays: [], payments: [], tasks: [], jobs: [], assets: [], vendors: [], items: [], moves: [], expenses: [], incidents: [], users: [], laundry: [], shifts: [], oldUnconfirmed: [], oldPending: [], debtors: [] },
   unsub: [], meta: {}, pending: false, fromCache: true, online: navigator.onLine,
   adminUntil: 0, photoCache: {}, form: {}
 };
@@ -151,7 +156,6 @@ function fail(e) { console.error(e); var m = (e && e.message) || String(e); if (
 function openModal(title, body, wide) { $('modalTitle').textContent = title; $('modalBody').innerHTML = body; $('modalCard').className = 'modal-card' + (wide ? ' wide' : ''); $('modal').classList.remove('hidden'); document.body.style.overflow = 'hidden'; hydratePhotos($('modalBody')); labelTables($('modalBody')); if (typeof restoreDraft === 'function') setTimeout(restoreDraft, 0); var f =$('modalBody').querySelector('input:not([type=hidden]):not([type=checkbox]):not([type=radio]),select,textarea'); if (f && window.innerWidth > 700) setTimeout(function () { f.focus(); }, 50); }
 function closeModal() { if (window.draftOnClose) draftOnClose(); $('modal').classList.add('hidden'); document.body.style.overflow = ''; S.form = {}; }
 document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('modal').classList.contains('hidden')) closeModal(); });
-function toggleMenu() {} // the sidebar menu was replaced by the Home page of cards (v2.0)
 var THEMES = { colour: '#4F46E5', mono: '#FFFFFF', cream: '#F4E6B8' };
 var THEME_NAMES = { colour: 'Colourful', mono: 'Black & white', cream: 'Black & cream' };
 function curTheme() { return document.body.getAttribute('data-theme') || 'colour'; }
@@ -178,7 +182,7 @@ function actionMenu(label, items, primary) {
 }
 document.addEventListener('click', function (e) { document.querySelectorAll('details.act-menu[open]').forEach(function (d) { if (!d.contains(e.target)) d.open = false; }); });
 /* Payment method radios that start on the method this device used last */
-function lastPayMethod() { try { var m = localStorage.getItem('wiwe_paymethod'); return PAY_METHODS[m] ? m : 'transfer'; } catch (e) { return 'transfer'; } }
+function lastPayMethod() { try { var m = localStorage.getItem('wiwe_paymethod'); return PAY_METHODS[m] ? m : 'pos'; } catch (e) { return 'pos'; } }
 function rememberPayMethod(m) { if (PAY_METHODS[m]) try { localStorage.setItem('wiwe_paymethod', m); } catch (e) {} }
 function payChoices(name, extra) { var d = lastPayMethod(); return '<div class="choices" role="radiogroup" aria-label="Payment method">' + Object.keys(PAY_METHODS).map(function (k) { return '<label class="choice"><input type="radio" name="' + name + '" value="' + k + '"' + (k === d ? ' checked' : '') + (extra || '') + '>' + PAY_METHODS[k] + '</label>'; }).join(''); }
 /* Fill an amount box with the amount due, unless the user has typed in it */
@@ -205,8 +209,12 @@ var CARD_ICON_RULES = [
 ];
 function cardIconFor(text) { for (var i = 0; i < CARD_ICON_RULES.length; i++) if (CARD_ICON_RULES[i][0].test(text)) return CARD_ICON_RULES[i][1]; return ICONS[S.view] && S.view !== 'today' ? S.view : 'dot'; }
 /* On phones, tables turn into two-line rows; each cell needs its column name to show beside it */
+/* Rows that open something when tapped can also be reached and opened with the keyboard */
+function keyRows(root) { root.querySelectorAll('.clickable[onclick]:not([tabindex])').forEach(function (el) { el.setAttribute('tabindex', '0'); if (el.tagName !== 'TR') el.setAttribute('role', 'button'); }); }
+document.addEventListener('keydown', function (e) { var t = e.target; if ((e.key === 'Enter' || e.key === ' ') && t && t.classList && t.classList.contains('clickable') && t.hasAttribute('onclick')) { e.preventDefault(); t.click(); } });
 function labelTables(root) {
   if (!root) return;
+  keyRows(root);
   root.querySelectorAll('table:not(.cal)').forEach(function (t) {
     var heads = Array.prototype.map.call(t.querySelectorAll('thead th'), function (th) { return th.textContent.trim(); });
     if (!heads.length) return;
@@ -260,7 +268,7 @@ function takePhoto(key) {
   inp.click();
 }
 function photoField(key, label) { return '<div class="field">' + esc(label) + '<div class="row"><button type="button" class="photo-btn" onclick="takePhoto(\'' + key + '\')">+ Add photo</button><div class="thumbs" id="thumbs-' + key + '">' + thumbs(S.form[key] || []) + '</div></div></div>'; }
-function thumbs(ids) { return (ids || []).map(function (id) { return '<img class="thumb" alt="Photo" data-photo="' + esc(id) + '" onclick="viewPhoto(\'' + esc(id) + '\')"' + (S.photoCache[id] ? ' src="' + S.photoCache[id] + '"' : '') + '>'; }).join(''); }
+function thumbs(ids) { return (ids || []).map(function (id) { return '<img class="thumb" alt="Photo" data-photo="' + esc(id) + '" onclick="viewPhoto(\'' + esc(id) + '\')"' + (S.photoCache[id] ? ' src="' + esc(S.photoCache[id]) + '"' : '') + '>'; }).join(''); }
 function hydratePhotos(root) {
   (root || document).querySelectorAll('img[data-photo]:not([src])').forEach(function (img) {
     var id = img.getAttribute('data-photo');
@@ -274,15 +282,18 @@ async function getPhoto(id) {
 }
 async function viewPhoto(id) {
   var d = await getPhoto(id); if (!d) return toast('Photo not available offline', true);
-  var w = window.open(); if (w) { w.document.write('<title>Photo</title><body style="margin:0;background:#111;display:flex;justify-content:center"><img src="' + d + '" style="max-width:100%;max-height:100vh"></body>'); }
+  var w = window.open(); if (w) { w.document.write('<title>Photo</title><body style="margin:0;background:#111;display:flex;justify-content:center"><img src="' + esc(d) + '" style="max-width:100%;max-height:100vh"></body>'); }
 }
 
 /* =========================================================
    Audit log (write-only for staff)
    ========================================================= */
-function audit(action, entity, entityId, details) {
+// Pass the batch of the action being logged so the log entry and the action are saved together or not at all
+function audit(action, entity, entityId, details, batch) {
   if (!db || !S.user) return;
-  db.collection('audit').add(Object.assign({ action: action, entity: entity, entityId: entityId || '', details: details || '' }, stamp())).catch(function () {});
+  var row = Object.assign({ action: action, entity: entity, entityId: entityId || '', details: details || '' }, stamp());
+  if (batch) batch.set(db.collection('audit').doc(), row);
+  else db.collection('audit').add(row).catch(function () {});
 }
 
 /* =========================================================
@@ -333,7 +344,7 @@ async function doLogin() {
     var u = await db.collection('usernames').doc(cleanUsername(val('li-user'))).get();
     if (!u.exists) throw new Error('no user');
     await auth.signInWithEmailAndPassword(u.data().email, val('li-pin'));
-  } catch (e) { showLogin('login', 'Wrong username or password.'); }
+  } catch (e) { showLogin('login', navigator.onLine === false || (e && (e.code === 'unavailable' || e.code === 'auth/network-request-failed')) ? 'No internet connection. Connect and try again.' : 'Wrong username or password.'); }
 }
 
 async function checkSetup() {
@@ -381,10 +392,20 @@ async function signOut() { if (!confirm('Sign out of Wiwe?')) return; stopListen
 /* =========================================================
    Live data
    ========================================================= */
+/* Records are cleaned as they arrive, so a number field can never carry text into the page
+   and a record id can never carry code into a button. */
+var NUM_KEYS = {}; 'qty nights amount total paid balance rate discount caution deposit reorderLevel unitCost sellPrice litres genHours serviceDays cost extras order cautionRefundDue cautionDeductions cautionApplied price short expected found guests at createdAt'.split(' ').forEach(function (k) { NUM_KEYS[k] = 1; });
+function clean(v, k) {
+  if (Array.isArray(v)) return v.map(function (x) { return clean(x); });
+  if (v && typeof v === 'object') { var o = {}; Object.keys(v).forEach(function (key) { o[key] = clean(v[key], key); }); return o; }
+  if (k && NUM_KEYS[k] && typeof v !== 'number' && v != null && v !== '') return Number(v) || 0;
+  return v;
+}
+function docRows(snap) { return snap.docs.filter(function (d) { return /^[\w-]+$/.test(d.id); }).map(function (d) { return clean(Object.assign({ id: d.id }, d.data())); }); }
 function stopListeners() { S.unsub.forEach(function (u) { try { u(); } catch (e) {} }); S.unsub = []; S.meta = {}; }
 function listen(key, query, sortKey) {
   var u = query.onSnapshot({ includeMetadataChanges: true }, function (snap) {
-    var rows = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+    var rows = docRows(snap);
     if (sortKey) rows.sort(function (a, b) { return (b[sortKey] || 0) > (a[sortKey] || 0) ? 1 : (b[sortKey] || 0) < (a[sortKey] || 0) ? -1 : 0; });
     S.data[key] = rows;
     // Track each list separately; the badge shows the combined state (one list's old
@@ -422,9 +443,10 @@ function startListeners() {
     listen('shifts', c('shifts').orderBy('openedAt', 'desc').limit(60));
     // anything still waiting for the owner never drops out, however old
     listen('oldUnconfirmed', c('payments').where('status', '==', 'unconfirmed').limit(100));
+    listen('debtors', c('stays').where('balance', '>', 0));
     listen('oldPending', c('expenses').where('status', '==', 'pending').limit(100));
   }
-  S.unsub.push(c('settings').doc('general').onSnapshot(function (d) { if (d.exists) S.settings = Object.assign({}, DEFAULT_SETTINGS, d.data()); scheduleRender(); }));
+  S.unsub.push(c('settings').doc('general').onSnapshot(function (d) { if (d.exists) S.settings = Object.assign({}, DEFAULT_SETTINGS, clean(d.data())); scheduleRender(); }));
 }
 function paintSync() {
   var b = $('syncBadge'), t = $('syncText'); if (!b) return;
@@ -460,7 +482,14 @@ function serviceDue(withinDays) { var lim = addDays(todayStr(), withinDays || 0)
 function openJobs() { return S.data.jobs.filter(function (j) { return ['open', 'assigned', 'in_progress'].indexOf(j.status) >= 0; }); }
 function mergeById(a, b) { var seen = {}; return a.concat(b).filter(function (x) { if (seen[x.id]) return false; seen[x.id] = 1; return true; }); }
 function pendingExpenses() { return mergeById(S.data.expenses, S.data.oldPending || []).filter(function (e) { return e.status === 'pending'; }); }
-function unconfirmedPayments() { return mergeById(S.data.payments, S.data.oldUnconfirmed || []).filter(function (p) { return p.status === 'unconfirmed' && p.amount > 0; }); }
+// Payments are final as soon as they are recorded. Only refunds wait for the owner.
+function allPayments() { return mergeById(S.data.payments, S.data.oldUnconfirmed || []); }
+function refundsWaiting() { return allPayments().filter(function (p) { return p.status === 'unconfirmed' && p.amount < 0; }); }
+function payCounts(p) { return p.status !== 'void' && p.status !== 'rejected' && !(p.status === 'unconfirmed' && p.amount < 0); }
+function allStays() { return mergeById(S.data.stays, S.data.debtors || []); }
+function findStay(id) { return byId(S.data.stays, id) || byId(S.data.debtors || [], id); }
+function findPayment(id) { return byId(allPayments(), id); }
+function debtors() { return allStays().filter(function (s) { return (s.balance || 0) > 0 && (s.status === 'checked_in' || s.status === 'checked_out'); }); }
 function refundsDue() { return S.data.stays.filter(function (s) { return s.cautionStatus === 'refund_due'; }); }
 function pendingDiscounts() { return S.data.stays.filter(function (s) { return s.discountStatus === 'pending' && s.status !== 'cancelled'; }); }
 function openIncidents() { return S.data.incidents.filter(function (i) { return !i.resolved; }); }
@@ -471,9 +500,8 @@ function alerts() {
   var out = [];
   if (S.rulesOutdated) out.push({ lvl: 'bad', tag: 'SETUP', t: 'Security rules need updating', s: 'Some actions are being refused. Tap for the 1-minute fix.', go: 'openRulesHelp()' });
   S.data.stays.filter(isOverstay).forEach(function (s) { out.push({ lvl: 'bad', tag: 'OVERSTAY', t: 'Room ' + s.roomNo + ' past check-out', s: s.guestName + ' was due out ' + fmtDate(s.checkOutDate) + '. Extend or check out.', go: "openStay('" + s.id + "')" }); });
-  var up = unconfirmedPayments(); if (up.length) out.push({ lvl: 'alert', tag: 'PAYMENT', t: up.length + ' payment' + (up.length > 1 ? 's' : '') + ' not confirmed', s: money(sum(up, function (p) { return p.amount; })) + ' waiting to be matched to the bank', go: "go('payments')" });
-  S.data.payments.filter(function (p) { return p.status === 'unconfirmed' && p.amount < 0; }).forEach(function (p) { out.push({ lvl: 'amber', tag: 'REFUND OK?', t: money(-p.amount) + ' refund for ' + p.guestName, s: (p.note || 'Room ' + p.roomNo) + ' · ' + (p.byName || ''), go: "go('payments')" }); });
-  var t = todayStr();
+  refundsWaiting().forEach(function (p) { out.push({ lvl: 'amber', tag: 'REFUND OK?', t: money(-p.amount) + ' refund for ' + p.guestName, s: (p.note || 'Room ' + p.roomNo) + ' · ' + (p.byName || ''), go: "go('payments',{tab:'refunds'})" }); });
+  debtors().filter(function (s) { return s.status === 'checked_out'; }).forEach(function (s) { out.push({ lvl: 'alert', tag: 'OWES', t: s.guestName + ' left owing ' + money(s.balance), s: 'Room ' + s.roomNo + ' · checked out ' + fmtDate(s.checkOutDate), go: "openStay('" + s.id + "')" }); });  var t = todayStr();
   S.data.stays.filter(function (s) { return s.status === 'reserved' && (s.checkInDate < t || (s.checkInDate === t && Date.now() > atTime(t, s.arrivalTime || S.settings.checkInTime) + (S.settings.holdHours || 3) * 3600000)); }).forEach(function (s) { out.push({ lvl: 'amber', tag: 'NO-SHOW?', t: s.guestName + ' has not arrived', s: 'Room ' + s.roomNo + ' held since ' + fmtDate(s.checkInDate) + '. Check in or release it.', go: "openStay('" + s.id + "')" }); });
   openIncidents().forEach(function (i) { out.push({ lvl: 'bad', tag: (i.type || 'ISSUE').replace('_', ' ').toUpperCase(), t: i.title, s: (i.byName || '') + ' · ' + fmtDT(i.at), go: "openIncident('" + i.id + "')" }); });
   pendingExpenses().forEach(function (e) { out.push({ lvl: 'amber', tag: 'APPROVE', t: (EXPENSE_CATS[e.category] || 'Expense') + ' ' + money(e.amount), s: (e.description || '') + ' · ' + (e.byName || ''), go: "openExpense('" + e.id + "')" }); });
@@ -500,7 +528,7 @@ var NAV = [
   { id: 'board', label: 'Room board', desc: 'Every room and its status', roles: ['manager', 'frontdesk'] },
   { id: 'shift', label: 'Shift', desc: 'Start, close and hand over', roles: ['manager', 'frontdesk'] },
   { id: 'stays', label: 'Stays', desc: 'Guests, reservations, calendar', roles: ['manager', 'frontdesk'] },
-  { id: 'payments', label: 'Payments', desc: 'Transfers waiting to be confirmed', roles: ['manager', 'frontdesk'] },
+  { id: 'payments', label: 'Payments', desc: 'Every payment and refund', roles: ['manager', 'frontdesk'] },
   { id: 'housekeeping', label: 'Housekeeping', desc: 'Cleaning tasks and laundry', roles: ['manager', 'frontdesk', 'housekeeping', 'maintenance'] },
   { id: 'maintenance', label: 'Maintenance', desc: 'Faults, repairs and assets', roles: ['manager', 'frontdesk', 'housekeeping', 'maintenance'] },
   { id: 'inventory', label: 'Inventory', desc: 'Supplies and items for sale', roles: ['manager', 'frontdesk'] },
@@ -512,12 +540,12 @@ var VIEWS = {}; // filled by front.js, ops.js, admin.js: { title, eyebrow?, rend
 
 function canSee(id) { var n = NAV.find(function (x) { return x.id === id; }); if (!n) return true; return has.apply(null, n.roles); }
 function defaultView() { return 'home'; }
-function go(view, params) { if (!VIEWS[view] || !canSee(view)) view = defaultView(); S.view = view; S.params = params || {}; if (params && params.tab) S.tab[view] = params.tab; if (view === 'reports') S.report = null; closeModal(); window.scrollTo(0, 0); try { history.replaceState(null, '', '#' + view); } catch (e) {} render(); }
-function navCounts() { return { shift: (typeof handoverWaiting === 'function' && handoverWaiting() && !myOpenShift()) ? 1 : 0, payments: unconfirmedPayments().length, today: alerts().length, housekeeping: S.data.tasks.filter(function (t) { return t.status !== 'done' && (!has('manager', 'frontdesk') ? (!t.assignee || t.assignee === S.user.uid) : true); }).length, maintenance: openJobs().length }; }
+function go(view, params) { if (!VIEWS[view] || !canSee(view)) view = defaultView(); S.view = view; S.params = params || {}; if (params && params.tab) S.tab[view] = params.tab; if (view === 'reports') S.report = null; viewDirty = false; closeModal(); window.scrollTo(0, 0); try { history.replaceState(null, '', '#' + view); } catch (e) {} render(); }
+function navCounts() { return { shift: (typeof handoverWaiting === 'function' && handoverWaiting() && !myOpenShift()) ? 1 : 0, payments: isAdmin() ? refundsWaiting().length : 0, today: alerts().length, housekeeping: S.data.tasks.filter(function (t) { return t.status !== 'done' && (!has('manager', 'frontdesk') ? (!t.assignee || t.assignee === S.user.uid) : true); }).length, maintenance: openJobs().length }; }
 /* The jobs each role does most, one tap away (Home on big screens, the + button on phones) */
 function quickActions() {
   var a = [], desk = has('manager', 'frontdesk');
-  if (isAdmin() && unconfirmedPayments().length) a.push(['Confirm payments', 'payments', "go('payments')"]);
+  if (isAdmin() && refundsWaiting().length) a.push(['Approve refunds', 'payments', "go('payments',{tab:'refunds'})"]);
   if (desk) { a.push(['Check in guest', 'stays', 'openCheckIn()']); a.push(['New reservation', 'calendar', 'openReservation()']); a.push(['Record sale', 'tag', 'openSell()']); }
   if (!desk && has('housekeeping')) a.push(['My cleaning tasks', 'housekeeping', "go('housekeeping')"]);
   if (!desk && has('maintenance')) a.push(['Open jobs', 'maintenance', "go('maintenance')"]);
@@ -539,7 +567,7 @@ function paintBottomBar() {
 }
 function toggleQuick(open) { var s = $('quickSheet'); if (!s) return; var show = open === undefined ? s.classList.contains('hidden') : open; s.classList.toggle('hidden', !show); var p = $('bbPlus'); if (p) p.setAttribute('aria-expanded', String(show)); }
 document.addEventListener('click', function (e) { var s = $('quickSheet'); if (s && !s.classList.contains('hidden') && !s.contains(e.target) && !(e.target.closest && e.target.closest('#bbPlus'))) toggleQuick(false); });
-var COUNT_WORD = { shift: 'handover waiting', payments: 'to confirm', today: 'alert', housekeeping: 'open', maintenance: 'open' };
+var COUNT_WORD = { shift: 'handover waiting', payments: 'refund to approve', today: 'alert', housekeeping: 'open', maintenance: 'open' };
 VIEWS.home = {
   title: function () { var h = new Date().getHours(); return (h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening') + ', ' + String((S.me && S.me.name) || '').split(' ')[0]; },
   render: function () {
@@ -567,12 +595,14 @@ function setTab(view, tab) { S.tab[view] = tab; render(); }
 function tabs(view, list) { var cur = S.tab[view] || list[0][0]; return '<div class="tabs" role="tablist">' + list.map(function (t) { return '<button type="button" role="tab" aria-selected="' + (cur === t[0]) + '" class="tab' + (cur === t[0] ? ' active' : '') + '" onclick="setTab(\'' + view + '\',\'' + t[0] + '\')">' + esc(t[1]) + '</button>'; }).join('') + '</div>'; }
 function curTab(view, def) { return S.tab[view] || def; }
 
-var renderQueued = false;
-function scheduleRender() { if (renderQueued) return; renderQueued = true; requestAnimationFrame(function () { renderQueued = false; render(); }); }
+// Half-typed settings on a page (not a pop-up) must not be wiped when fresh data arrives or the minute ticks over
+var renderQueued = false, viewDirty = false;
+document.addEventListener('input', function (e) { if (e.target.closest && e.target.closest('#view form')) viewDirty = true; }, true);
+function scheduleRender() { if (renderQueued || viewDirty) return; renderQueued = true; requestAnimationFrame(function () { renderQueued = false; render(); }); }
 function render() {
   if (!S.me || !S.view) return;
   var v = VIEWS[S.view]; if (!v) return;
-
+  viewDirty = false;
   document.body.setAttribute('data-view', S.view);
   var now = new Date();
   $('pageEyebrow').textContent = (v.eyebrow ? v.eyebrow() : DOW[now.getDay()] + ', ' + now.getDate() + ' ' + MON[now.getMonth()]);
@@ -625,7 +655,7 @@ function openMyPassword() {
     field('Current password', input('cp-old', '', 'type="password" required autocomplete="current-password"')) +
     field('New password', input('cp-new', '', 'type="password" required minlength="6" autocomplete="new-password"'), '', 'At least 6 characters') +
     '</div><div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" type="submit">Change password</button></div></form>';
-  toggleMenu(false); openModal('Change my password', b);
+  openModal('Change my password', b);
 }
 async function changeMyPassword() {
   if (!validPassword(val('cp-new'))) return toast('Password must be at least 6 characters', true);
@@ -682,6 +712,7 @@ async function finishOnboard() {
 function leaveOnboard() { try { history.replaceState(null, '', location.pathname); } catch (e) {} location.reload(); }
 
 function boot() {
+  if (!SDK_OK) { $('boot').innerHTML = '<img class="logo-img" src="img/logo.png" alt="Wiwe Apartments" width="120"><span>Could not load the app. Check the internet connection.</span><button class="btn primary" type="button" onclick="location.reload()">Try again</button>'; return; }
   if (!CONFIGURED) return showLogin('config');
   var obCode = onboardCodeFromUrl();
   if (obCode) showOnboard(obCode);
@@ -707,6 +738,6 @@ async function checkSetupOrLogin() {
   try { var s = await db.collection('meta').doc('setup').get(); showLogin(s.exists ? 'login' : 'setup'); }
   catch (e) { showLogin('login'); }
 }
-setInterval(function () { if (S.me) scheduleRender(); }, 60000);
+setInterval(function () { if (!S.me) return; if (S.dailyDay && S.dailyDay !== todayStr()) ensureDailyTasks(); scheduleRender(); }, 60000);
 if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) navigator.serviceWorker.register('sw.js').catch(function () {});
 document.addEventListener('DOMContentLoaded', boot);

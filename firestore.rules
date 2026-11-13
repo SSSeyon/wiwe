@@ -1,8 +1,10 @@
 rules_version = '2';
-// Wiwe Apartments: Firestore security rules.
-// Paste into Firebase console > Firestore Database > Rules, then Publish.
+// Wiwe Apartments: Firestore security rules (v3).
+// Published automatically by .github/workflows/deploy-rules.yml when this file changes.
+// By hand: paste into Firebase console > Firestore Database > Rules, then Publish.
 // The app hides buttons by role, but THESE rules are what actually stop a staff member
-// from confirming their own payment or changing a rate, even through the browser console.
+// from changing a rate, shrinking a bill or passing their own inspection, even through
+// the browser console.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -12,9 +14,28 @@ service cloud.firestore {
     function active() { return signedIn() && exists(userPath()) && me().active == true; }
     function anyRole(list) { return active() && me().roles.hasAny(list.concat(['admin'])); }
     function admin() { return active() && me().roles.hasAny(['admin']); }
+    function desk() { return anyRole(['manager', 'frontdesk']); }
     function onlyChanges(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
     function settings() { return get(/databases/$(database)/documents/settings/general).data; }
     function stampedByMe() { return request.resource.data.by == request.auth.uid; }
+
+    // The nightly rate of the room a stay is in, as set by the owner
+    function typeRate(roomId) {
+      return get(/databases/$(database)/documents/roomTypes/$(get(/databases/$(database)/documents/rooms/$(roomId)).data.typeId)).data.rate;
+    }
+    // When a stay first gets a bill: the rate must be the owner's rate and the total cannot be
+    // less than rate x nights minus the discount (which the owner approves separately).
+    function firstBillOk(n) {
+      return !('total' in n)
+        || (n.rate == typeRate(n.roomId) && n.total >= n.rate * n.nights - n.get('discount', 0));
+    }
+    // Afterwards: the rate is fixed, and the bill can only keep pace with the nights or go up.
+    function billNotShrunk(o, n) {
+      return n.rate == o.rate && (n.total - n.nights * n.rate >= o.total - o.nights * o.rate);
+    }
+    function discountOk() {
+      return request.resource.data.get('discountStatus', 'none') in ['none', 'pending'];
+    }
 
     // First-time setup: the very first account becomes admin, once.
     match /meta/setup {
@@ -23,6 +44,11 @@ service cloud.firestore {
         && !exists(/databases/$(database)/documents/meta/setup)
         && getAfter(userPath()).data.roles.hasAny(['admin']);
       allow update, delete: if false;
+    }
+    // The app reads this (empty) spot to tell whether these v3 rules are the ones published.
+    match /meta/rules {
+      allow read: if signedIn();
+      allow write: if false;
     }
 
     match /users/{uid} {
@@ -44,10 +70,11 @@ service cloud.firestore {
       allow delete: if admin() || (signedIn() && resource.data.uid == request.auth.uid);
     }
 
-    // Username -> hidden login. Readable before sign-in so the login screen can find it.
-    // Only the owner can point a username at a new login (new account, hand over, reset password).
+    // Username -> hidden login. One name can be looked up before sign-in (the login screen needs it),
+    // but the whole list cannot be read.
     match /usernames/{name} {
-      allow read: if true;
+      allow get: if true;
+      allow list: if admin();
       allow create: if admin()
         || (signedIn() && request.resource.data.uid == request.auth.uid
             && !exists(/databases/$(database)/documents/meta/setup)
@@ -66,36 +93,50 @@ service cloud.firestore {
       allow write: if admin();
     }
 
+    // Anyone on staff moves a room through cleaning, but only the front desk or a manager
+    // can make it Ready (that is the inspection).
     match /rooms/{id} {
       allow read: if active();
       allow create, delete: if admin();
-      allow update: if admin() || (active() && onlyChanges(['status', 'currentStayId', 'oooReason', 'readyAt']));
+      allow update: if admin()
+        || (active() && onlyChanges(['status', 'currentStayId', 'oooReason', 'readyAt'])
+            && (request.resource.data.status != 'ready' || resource.data.status == 'ready' || desk()));
     }
 
     match /stays/{id} {
-      allow read: if anyRole(['manager', 'frontdesk']);
-      allow create: if anyRole(['manager', 'frontdesk']) && stampedByMe()
-        && (admin() || request.resource.data.get('discountStatus', 'none') in ['none', 'pending']);
-      allow update: if anyRole(['manager', 'frontdesk'])
+      allow read: if desk();
+      allow create: if desk() && stampedByMe()
+        && (admin() || (discountOk() && firstBillOk(request.resource.data)));
+      allow update: if desk()
         && (admin()
-            || request.resource.data.get('discountStatus', 'none') in ['none', 'pending']
-            || request.resource.data.get('discountStatus', 'none') == resource.data.get('discountStatus', 'none'));
+            || ((discountOk() || request.resource.data.get('discountStatus', 'none') == resource.data.get('discountStatus', 'none'))
+                && (('total' in resource.data)
+                    ? billNotShrunk(resource.data, request.resource.data)
+                    : firstBillOk(request.resource.data))));
       allow delete: if false;
     }
 
-    // Front desk records payments as "unconfirmed". Only the owner confirms, rejects or voids.
+    // A payment is final when recorded. Staff record money in; a refund (money out) waits
+    // for the owner as "unconfirmed". Only the owner changes a payment afterwards (void, approve).
     match /payments/{id} {
-      allow read: if anyRole(['manager', 'frontdesk']);
-      allow create: if anyRole(['manager', 'frontdesk']) && stampedByMe()
-        && (request.resource.data.status == 'unconfirmed'
-            || admin()
+      allow read: if desk();
+      allow create: if desk() && stampedByMe() && request.resource.data.amount is number
+        && (admin()
+            || (request.resource.data.amount > 0 && request.resource.data.status in ['confirmed', 'unconfirmed'])
+            || (request.resource.data.amount < 0 && request.resource.data.status == 'unconfirmed')
             || (request.resource.data.kind == 'refund' && anyRole(['manager'])));
       allow update: if admin();
       allow delete: if false;
     }
 
+    // A turnover clean is only "done" when the front desk or a manager passes the inspection.
     match /tasks/{id} {
-      allow read, create, update: if active();
+      allow read, create: if active();
+      allow update: if active()
+        && (desk()
+            || !(request.resource.data.status == 'done'
+                 && request.resource.data.get('type', '') == 'turnover'
+                 && resource.data.status != 'done'));
       allow delete: if admin();
     }
 
@@ -116,12 +157,13 @@ service cloud.firestore {
       allow write: if anyRole(['manager', 'maintenance']);
     }
 
-    // Store items: only managers edit items; anyone may change the quantity (restocking),
-    // and every change of quantity is recorded in "moves".
+    // Store items: only managers edit items; anyone may change the quantity (restocking, sales),
+    // it must be a number, and every change of quantity is recorded in "moves".
     match /items/{id} {
       allow read: if active();
       allow create: if anyRole(['manager']);
-      allow update: if anyRole(['manager']) || (active() && onlyChanges(['qty']));
+      allow update: if anyRole(['manager'])
+        || (active() && onlyChanges(['qty']) && request.resource.data.qty is number);
       allow delete: if false;
     }
 
@@ -133,8 +175,8 @@ service cloud.firestore {
 
     // Expenses above the approval limit must be saved as "pending".
     match /expenses/{id} {
-      allow read: if anyRole(['manager', 'frontdesk']);
-      allow create: if active() && stampedByMe()
+      allow read: if desk();
+      allow create: if active() && stampedByMe() && request.resource.data.amount is number
         && (request.resource.data.status == 'pending'
             || admin()
             || (request.resource.data.status == 'approved' && request.resource.data.amount <= settings().approvalLimit));
@@ -143,7 +185,7 @@ service cloud.firestore {
     }
 
     match /incidents/{id} {
-      allow read: if anyRole(['manager', 'frontdesk']);
+      allow read: if desk();
       allow create: if active() && stampedByMe();
       allow update: if anyRole(['manager']);
       allow delete: if false;
@@ -159,15 +201,19 @@ service cloud.firestore {
 
     // Front desk shifts: opened by yourself; closed by you, accepted by the next person.
     match /shifts/{id} {
-      allow read: if anyRole(['manager', 'frontdesk']);
-      allow create: if anyRole(['manager', 'frontdesk']) && request.resource.data.openedBy == request.auth.uid;
-      allow update: if anyRole(['manager', 'frontdesk']);
+      allow read: if desk();
+      allow create: if desk() && request.resource.data.openedBy == request.auth.uid;
+      allow update: if desk();
       allow delete: if false;
     }
 
+    // Photos (guest IDs, slips, damage): opened one at a time by staff who hold the link to it
+    // from a stay, payment or job. Nobody but the owner can read the whole collection.
     match /photos/{id} {
-      allow read: if active();
-      allow create: if active() && stampedByMe() && request.resource.data.data.size() < 1000000;
+      allow get: if active();
+      allow list: if admin();
+      allow create: if active() && stampedByMe()
+        && request.resource.data.data is string && request.resource.data.data.size() < 1000000;
       allow update: if false;
       allow delete: if admin();
     }

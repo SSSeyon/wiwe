@@ -106,8 +106,8 @@ function restoreDraft() {
     if (!(el.id in raw.v)) return;
     if (el.type === 'checkbox') { if (el.checked !== raw.v[el.id]) { el.checked = raw.v[el.id]; fire(el); changed++; } return; }
     if (el.value === raw.v[el.id]) return;
-    el.value = raw.v[el.id];
-    if (el.value !== raw.v[el.id]) return; // a select option that no longer exists (e.g. the room is taken)
+    var prev = el.value; el.value = raw.v[el.id];
+    if (el.value !== raw.v[el.id]) { el.value = prev; return; } // a select option that no longer exists (e.g. the room is taken): keep what the form offered
     // fire the field's own handler (it may recalculate totals) but keep pre-filled amounts recalculating
     var auto = (el.getAttribute('oninput') || '').indexOf('dataset.touched') >= 0;
     fire(el); if (auto) el.dataset.touched = '1';

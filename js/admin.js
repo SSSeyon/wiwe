@@ -8,23 +8,23 @@ VIEWS.today = {
   render: function () {
     var t = todayStr(), y = addDays(t, -1);
     function money4(day) {
-      var p = S.data.payments.filter(function (x) { return dateStr(new Date(x.at)) === day && x.amount > 0 && x.status !== 'void'; });
+      var p = allPayments().filter(function (x) { return dateStr(new Date(x.at)) === day && x.amount > 0 && payCounts(x); });
       var e = S.data.expenses.filter(function (x) { return dateStr(new Date(x.at)) === day && x.status !== 'rejected' && x.status !== 'void'; });
-      return { exp: sum(p, function (x) { return x.amount; }), conf: sum(p.filter(function (x) { return x.status === 'confirmed'; }), function (x) { return x.amount; }), spent: sum(e, function (x) { return x.amount; }) };
+      var by = function (m) { return sum(p.filter(function (x) { return x.method === m; }), function (x) { return x.amount; }); };
+      return { list: p, exp: sum(p, function (x) { return x.amount; }), pos: by('pos'), transfer: by('transfer'), spent: sum(e, function (x) { return x.amount; }) };
     }
     var td = money4(t), yd = money4(y), rooms = roomsSorted(), occ = rooms.filter(function (r) { return r.status === 'occupied'; }).length;
-    var up = unconfirmedPayments(), al = alerts().filter(function (a) { return a.tag !== 'PAYMENT'; });
+    var al = alerts(), owe = debtors();
     var html = '<section class="grid-stats">' +
-      '<div class="stat dark"><span class="label">Recorded today</span><span class="value">' + money(td.exp) + '</span><span class="sub">' + money(td.conf) + ' confirmed in bank</span></div>' +
-      stat('Yesterday', money(yd.exp), money(yd.conf) + ' confirmed · ' + money(yd.spent) + ' spent') +
+      '<div class="stat dark"><span class="label">Recorded today</span><span class="value">' + money(td.exp) + '</span><span class="sub">' + money(td.pos) + ' POS · ' + money(td.transfer) + ' transfer</span></div>' +
+      stat('Yesterday', money(yd.exp), money(yd.pos) + ' POS · ' + money(yd.spent) + ' spent') +
       stat('Occupancy now', occ + ' / ' + rooms.length, Math.round(occ / Math.max(1, rooms.length) * 100) + '%') +
-      stat('Spent today', money(td.spent), pendingExpenses().length + ' waiting approval', pendingExpenses().length ? 'warn' : '') + '</section>';
-    html += '<div class="split"><div class="wide"><div class="card"><div class="card-head"><h2>Confirm payments</h2>' + (up.length ? pill(up.length + ' waiting', 'st-alert') : pill('All matched', 'st-ready')) + '</div>' +
-      (up.length ? '<div class="note" style="margin-bottom:8px">Open your bank app. Tap "Seen in bank" only when the money is there.</div>' + up.map(paymentRow).join('') : '<div class="muted">Nothing to confirm.</div>') + '</div>' +
-      '<div class="card"><h2>Leak watch and approvals</h2><div class="stack">' + alertList(al) + '</div></div></div>' +
+      stat('Guests owing', money(sum(owe, function (s) { return s.balance; })), owe.length + ' stay' + (owe.length === 1 ? '' : 's') + ' · ' + money(td.spent) + ' spent today', owe.length ? 'warn' : '') + '</section>';
+    html += '<div class="split"><div class="wide"><div class="card"><h2>Leak watch and approvals</h2><div class="stack">' + alertList(al) + '</div></div>' +
+      '<div class="card"><div class="card-head"><h2>Payments recorded today</h2><button class="btn small" type="button" onclick="go(\'payments\')">See all</button></div>' +
+      (td.list.length ? '<div class="note" style="margin-bottom:8px">Compare the POS figure with the end-of-day total on the terminal: ' + money(td.pos) + ' from ' + td.list.filter(function (x) { return x.method === 'pos'; }).length + ' slip(s).</div>' + td.list.map(paymentRow).join('') : '<div class="muted">Nothing recorded yet today.</div>') + '</div></div>' +
       '<div class="narrow">' + dailySummaryCard() +
-      '<div class="card"><div class="card-head"><h2>Recent activity</h2><button class="btn small" type="button" onclick="go(\'admin\',{tab:\'audit\'})">See all</button></div><div id="today-audit" class="muted">Loading…</div></div></div></div>';
-    setTimeout(loadRecentAudit, 0);
+      '<div class="card"><div class="card-head"><h2>Recent activity</h2><button class="btn small" type="button" onclick="go(\'admin\',{tab:\'audit\'})">See all</button></div><div id="today-audit" class="muted">Loading…</div></div></div></div>';    setTimeout(loadRecentAudit, 0);
     return html;
   }
 };
@@ -61,51 +61,106 @@ async function loadReport(month) {
       db.collection('moves').where('at', '>=', start).where('at', '<', end).get(),
       db.collection('jobs').where('createdAt', '>=', start).where('createdAt', '<', end).get()
     ]);
-    var docs = function (s) { return s.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); };
+    var docs = docRows;
     S.report = { month: month, start: start, end: end, first: first, last: last, days: days, payments: docs(r[0]), expenses: docs(r[1]), stays: docs(r[2]).filter(function (s) { return (s.status === 'checked_in' || s.status === 'checked_out') && s.checkInDate <= last; }), moves: docs(r[3]), jobs: docs(r[4]) };
     S.reportLoading = null;
     if (S.view === 'reports') render();
   } catch (e) { S.reportLoading = null; fail(e); }
 }
+var ROOM_KINDS = ['room', 'extension', 'balance', 'deposit', 'damage', 'refund_early', 'refund_deposit']; // money for rooms, less refunds of it
+function nightsIn(s, first, next) { var a = s.checkInDate > first ? s.checkInDate : first, b = s.checkOutDate < next ? s.checkOutDate : next; return Math.max(0, daysBetween(a, b)); }
 function reportHtml(R) {
-  var rooms = roomsSorted(), pays = R.payments.filter(function (p) { return p.status !== 'void' && p.status !== 'rejected'; });
-  var revKinds = ['room', 'extension', 'balance', 'damage', 'sale'];
-  var revenue = sum(pays.filter(function (p) { return revKinds.indexOf(p.kind) >= 0; }), function (p) { return p.amount; });
-  var confirmed = sum(pays.filter(function (p) { return revKinds.indexOf(p.kind) >= 0 && p.status === 'confirmed'; }), function (p) { return p.amount; });
+  var rooms = roomsSorted(), pays = R.payments.filter(payCounts), next = addDays(R.last, 1);
+  var roomPays = pays.filter(function (p) { return ROOM_KINDS.indexOf(p.kind) >= 0; });
+  var roomRev = sum(roomPays, function (p) { return p.amount; }), salesRev = sum(pays.filter(function (p) { return p.kind === 'sale'; }), function (p) { return p.amount; });
+  var outs = R.stays.filter(function (s) { return s.checkedOutAt >= R.start && s.checkedOutAt < R.end; });
+  var cautionKept = sum(outs, function (s) { return (s.cautionDeductions || 0) + (s.cautionApplied || 0); });
+  var revenue = roomRev + salesRev + cautionKept;
   var exps = R.expenses.filter(function (e) { return e.status !== 'rejected' && e.status !== 'void'; }), spent = sum(exps, function (e) { return e.amount; });
   var nightsByRoom = {}, sold = 0;
-  R.stays.forEach(function (s) { var a = s.checkInDate > R.first ? s.checkInDate : R.first, bEnd = s.checkOutDate <= R.last ? s.checkOutDate : addDays(R.last, 1), n = Math.max(0, daysBetween(a, bEnd)); sold += n; nightsByRoom[s.roomNo] = (nightsByRoom[s.roomNo] || 0) + n; });
-  var avail = rooms.length * R.days, occ = avail ? sold / avail : 0, adr = sold ? revenue / sold : 0;
-  var revByRoom = {}; pays.filter(function (p) { return revKinds.indexOf(p.kind) >= 0; }).forEach(function (p) { revByRoom[p.roomNo] = (revByRoom[p.roomNo] || 0) + p.amount; });
+  R.stays.forEach(function (s) { var n = nightsIn(s, R.first, next); sold += n; nightsByRoom[s.roomNo] = (nightsByRoom[s.roomNo] || 0) + n; });
+  var avail = rooms.length * R.days, occ = avail ? sold / avail : 0, adr = sold ? roomRev / sold : 0;
+  var revByRoom = {}; roomPays.forEach(function (p) { revByRoom[p.roomNo] = (revByRoom[p.roomNo] || 0) + p.amount; });
   var repByRoom = {}; exps.filter(function (e) { return e.category === 'repairs' && e.location && e.location.indexOf('room:') === 0; }).forEach(function (e) { var l = locLabel(e.location).replace('Room ', ''); repByRoom[l] = (repByRoom[l] || 0) + e.amount; });
   var cats = {}; exps.forEach(function (e) { cats[e.category] = (cats[e.category] || 0) + e.amount; });
   var maxC = Math.max.apply(null, Object.keys(cats).map(function (k) { return cats[k]; }).concat([1]));
   var issued = R.moves.filter(function (m) { return m.type === 'issue'; }), shortfall = R.moves.filter(function (m) { return m.type === 'count' && m.qty < 0; });
   var diesel = exps.filter(function (e) { return e.category === 'diesel'; });
+  var voids = R.payments.filter(function (p) { return p.status === 'void'; }), refunds = pays.filter(function (p) { return p.amount < 0; });
+  var dups = R.payments.filter(function (p) { return dupOf(p); }).length;
+  // where guests came from: stays that started this month
+  var src = {}; R.stays.filter(function (s) { return s.checkInDate >= R.first; }).forEach(function (s) { var k = s.source || 'unknown'; src[k] = src[k] || { n: 0, nights: 0 }; src[k].n++; src[k].nights += s.nights || 0; });
+  var maxS = Math.max.apply(null, Object.keys(src).map(function (k) { return src[k].n; }).concat([1]));
+  // the next 30 days already on the books
+  var t = todayStr(), t30 = addDays(t, 30), ahead = sum(S.data.stays.filter(function (s) { return s.status === 'reserved' || s.status === 'checked_in'; }), function (s) { return nightsIn(s, t, t30); });
+  var owe = debtors();
+  var cleans = S.data.tasks.filter(function (k) { return k.type === 'turnover' && k.startedAt && k.finishedAt && k.finishedAt >= R.start && k.finishedAt < R.end && k.finishedAt > k.startedAt; });
+  var cleanMin = cleans.length ? Math.round(sum(cleans, function (k) { return k.finishedAt - k.startedAt; }) / cleans.length / 60000) : 0;
+  var row = function (label, value) { return '<div class="list-row"><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong></div>'; };
   var html = monthPicker(R.month) + '<section class="grid-stats">' +
-    '<div class="stat dark"><span class="label">Revenue</span><span class="value">' + money(revenue) + '</span><span class="sub">' + money(confirmed) + ' confirmed in bank</span></div>' +
+    '<div class="stat dark"><span class="label">Income</span><span class="value">' + money(revenue) + '</span><span class="sub">' + money(roomRev) + ' rooms · ' + money(salesRev) + ' item sales' + (cautionKept ? ' · ' + money(cautionKept) + ' caution kept' : '') + '</span></div>' +
     stat('Expenses', money(spent), exps.length + ' records') + stat('Net', money(revenue - spent), revenue ? Math.round((revenue - spent) / revenue * 100) + '% margin' : '', revenue - spent < 0 ? 'warn' : '') +
-    stat('Occupancy', Math.round(occ * 100) + '%', sold + ' of ' + avail + ' room-nights · ' + money(adr) + ' average per night sold') + '</section>';
-  html += '<div class="split"><div class="wide"><details class="card fold"><summary><h2>By room</h2><span class="muted">Earnings per room per night: <strong>' + money(avail ? revenue / avail : 0) + '</strong></span></summary><div class="table-wrap"><table><thead><tr><th>Room</th><th class="right">Nights</th><th class="right">Occupancy</th><th class="right">Revenue</th><th class="right">Repairs</th></tr></thead><tbody>' +
-    rooms.map(function (r) { var n = nightsByRoom[r.number] || 0; return '<tr><td><strong>' + esc(r.number) + '</strong> <span class="muted small">' + esc(roomType(r).name) + '</span></td><td class="right">' + n + '</td><td class="right">' + Math.round(n / R.days * 100) + '%</td><td class="right money">' + money(revByRoom[r.number] || 0) + '</td><td class="right money">' + money(repByRoom[r.number] || 0) + '</td></tr>'; }).join('') + '</tbody></table></div></details></div>' +
+    stat('Occupancy', Math.round(occ * 100) + '%', sold + ' of ' + avail + ' room-nights · ' + money(adr) + ' average room rate') + '</section>' +
+    '<section class="grid-stats">' +
+    stat('Next 30 days', Math.round(ahead / Math.max(1, rooms.length * 30) * 100) + '% booked', ahead + ' of ' + rooms.length * 30 + ' room-nights already on the books') +
+    stat('Guests owing now', money(sum(owe, function (s) { return s.balance; })), owe.length + ' stay' + (owe.length === 1 ? '' : 's'), owe.length ? 'warn' : '') +
+    stat('Turnover cleaning', cleans.length ? cleanMin + ' min' : '—', cleans.length ? 'Average over ' + cleans.length + ' room' + (cleans.length === 1 ? '' : 's') : 'No finished cleans this month') + '</section>';
+  html += '<div class="split"><div class="wide"><details class="card fold"><summary><h2>By room</h2><span class="muted">Income per room per night: <strong>' + money(avail ? roomRev / avail : 0) + '</strong></span></summary><div class="table-wrap"><table><thead><tr><th>Room</th><th class="right">Nights</th><th class="right">Occupancy</th><th class="right">Income</th><th class="right">Repairs</th></tr></thead><tbody>' +
+    rooms.map(function (r) { var n = nightsByRoom[r.number] || 0; return '<tr><td><strong>' + esc(r.number) + '</strong> <span class="muted small">' + esc(roomType(r).name) + '</span></td><td class="right">' + n + '</td><td class="right">' + Math.round(n / R.days * 100) + '%</td><td class="right money">' + money(revByRoom[r.number] || 0) + '</td><td class="right money">' + money(repByRoom[r.number] || 0) + '</td></tr>'; }).join('') + '</tbody></table></div></details>' +
+    '<div class="card"><h2>Where guests came from</h2>' + (Object.keys(src).length ? '<div class="bars">' + Object.keys(src).sort(function (a, b) { return src[b].n - src[a].n; }).map(function (k) { return '<div class="bar-row"><span>' + esc(SOURCES[k] || 'Not recorded') + '</span><span class="bar-track"><span style="width:' + Math.round(src[k].n / maxS * 100) + '%"></span></span><span class="right">' + src[k].n + ' stay' + (src[k].n === 1 ? '' : 's') + ' · ' + src[k].nights + ' nights</span></div>'; }).join('') + '</div>' : '<div class="muted">No stays started this month.</div>') + '</div>' +
+    trendCard() + '</div>' +
     '<div class="narrow"><div class="card"><h2>Expenses by category</h2>' + (Object.keys(cats).length ? '<div class="bars">' + Object.keys(cats).sort(function (a, b) { return cats[b] - cats[a]; }).map(function (k) { return '<div class="bar-row"><span>' + esc(EXPENSE_CATS[k] || k) + '</span><span class="bar-track"><span style="width:' + Math.round(cats[k] / maxC * 100) + '%"></span></span><span class="right money">' + money(cats[k]) + '</span></div>'; }).join('') + '</div>' : '<div class="muted">No expenses.</div>') + '</div>' +
     '<div class="card"><h2>Leak indicators</h2>' +
-    '<div class="list-row"><span>Store items issued per night sold</span><strong>' + (sold ? (-sum(issued, function (m) { return m.qty; }) / sold).toFixed(1) : '—') + '</strong></div>' +
-    '<div class="list-row"><span>Stock count shortfalls</span><strong>' + shortfall.length + '</strong></div>' +
-    '<div class="list-row"><span>Payments not received</span><strong>' + R.payments.filter(function (p) { return p.status === 'rejected'; }).length + '</strong></div>' +
-    '<div class="list-row"><span>Still unconfirmed</span><strong>' + money(sum(R.payments.filter(function (p) { return p.status === 'unconfirmed' && p.amount > 0; }), function (p) { return p.amount; })) + '</strong></div>' +
-    '<div class="list-row"><span>Diesel</span><strong>' + sum(diesel, function (e) { return e.litres; }) + ' L · ' + money(sum(diesel, function (e) { return e.amount; })) + '</strong></div>' +
-    '<div class="list-row"><span>Repair jobs opened</span><strong>' + R.jobs.length + '</strong></div>' +
-    '<div class="list-row"><span>Discounts given</span><strong>' + money(sum(R.stays.filter(function (s) { return s.discountStatus === 'approved' && s.checkInDate >= R.first; }), function (s) { return s.discount; })) + '</strong></div>' +
+    row('Store items issued per night sold', sold ? (-sum(issued, function (m) { return m.qty; }) / sold).toFixed(1) : '—') +
+    row('Stock count shortfalls', shortfall.length) +
+    row('Payments voided', voids.length + ' · ' + money(sum(voids, function (p) { return p.amount; }))) +
+    row('Payments sharing a reference', dups) +
+    row('Refunds paid', refunds.length + ' · ' + money(-sum(refunds, function (p) { return p.amount; }))) +
+    row('Checked out still owing', money(sum(outs, function (s) { return Math.max(0, s.balance || 0); }))) +
+    row('Discounts given', money(sum(R.stays.filter(function (s) { return s.discountStatus === 'approved' && s.checkInDate >= R.first; }), function (s) { return s.discount; }))) +
+    row('Diesel', sum(diesel, function (e) { return e.litres; }) + ' L · ' + money(sum(diesel, function (e) { return e.amount; }))) +
+    row('Repair jobs opened', R.jobs.length) +
     '</div></div></div>';
   return html;
 }
-function exportCsv(kind) {
+/* Six months side by side. Read on request only, because it costs extra database reads. */
+function trendCard() {
+  if (!S.trend) return '<div class="card"><div class="card-head"><h2>Last 6 months</h2><button class="btn small" type="button"' + (S.trendLoading ? ' disabled' : '') + ' onclick="loadTrend()">' + (S.trendLoading ? 'Loading…' : 'Show') + '</button></div><div class="muted">Income, spending and occupancy month by month.</div></div>';
+  var max = Math.max.apply(null, S.trend.map(function (m) { return m.rev; }).concat([1]));
+  return '<div class="card"><div class="card-head"><h2>Last 6 months</h2><button class="btn small" type="button" onclick="S.trend=null;loadTrend()">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>Month</th><th>Income</th><th class="right">Income</th><th class="right">Spent</th><th class="right">Net</th><th class="right">Occupancy</th></tr></thead><tbody>' +
+    S.trend.map(function (m) { return '<tr><td><strong>' + esc(m.label) + '</strong></td><td style="min-width:90px"><span class="bar-track" style="display:block"><span style="display:block;width:' + Math.round(m.rev / max * 100) + '%"></span></span></td><td class="right money">' + money(m.rev) + '</td><td class="right money">' + money(m.spent) + '</td><td class="right money">' + money(m.rev - m.spent) + '</td><td class="right">' + Math.round(m.occ * 100) + '%</td></tr>'; }).join('') + '</tbody></table></div></div>';
+}
+async function loadTrend() {
+  if (S.trendLoading) return;
+  S.trendLoading = true; render();
+  var end = parseDate(todayStr().slice(0, 7) + '-01'); end.setMonth(end.getMonth() + 1);
+  var start = new Date(end.getTime()); start.setMonth(start.getMonth() - 6);
+  try {
+    var r = await Promise.all([
+      db.collection('payments').where('at', '>=', start.getTime()).where('at', '<', end.getTime()).get(),
+      db.collection('expenses').where('at', '>=', start.getTime()).where('at', '<', end.getTime()).get(),
+      db.collection('stays').where('checkOutDate', '>=', dateStr(start)).get()
+    ]);
+    var pays = docRows(r[0]).filter(function (p) { return payCounts(p) && (ROOM_KINDS.indexOf(p.kind) >= 0 || p.kind === 'sale'); });
+    var exps = docRows(r[1]).filter(function (e) { return e.status !== 'rejected' && e.status !== 'void'; });
+    var stays = docRows(r[2]).filter(function (s) { return s.status === 'checked_in' || s.status === 'checked_out'; });
+    var nRooms = Math.max(1, roomsSorted().length), rows = [];
+    for (var i = 0; i < 6; i++) {
+      var a = new Date(start.getTime()); a.setMonth(a.getMonth() + i); var b = new Date(a.getTime()); b.setMonth(b.getMonth() + 1);
+      var first = dateStr(a), next = dateStr(b), inM = function (x) { return x.at >= a.getTime() && x.at < b.getTime(); };
+      var kept = sum(stays.filter(function (s) { return s.checkedOutAt >= a.getTime() && s.checkedOutAt < b.getTime(); }), function (s) { return (s.cautionDeductions || 0) + (s.cautionApplied || 0); });
+      rows.push({ label: MON[a.getMonth()] + ' ' + a.getFullYear(), rev: sum(pays.filter(inM), function (p) { return p.amount; }) + kept, spent: sum(exps.filter(inM), function (e) { return e.amount; }), occ: sum(stays, function (s) { return nightsIn(s, first, next); }) / (nRooms * daysBetween(first, next)) });
+    }
+    S.trend = rows;
+  } catch (e) { fail(e); }
+  S.trendLoading = false;
+  if (S.view === 'reports') render();
+}function exportCsv(kind) {
   var R = S.report; if (!R) return toast('Load a month first', true);
   var rows = kind === 'payments'
-    ? [['Date', 'Room', 'Guest', 'Kind', 'Method', 'Sender', 'Reference', 'Amount', 'Status', 'Recorded by']].concat(R.payments.map(function (p) { return [fmtDT(p.at), p.roomNo, p.guestName, p.kind, p.method, p.sender, p.ref, p.amount, p.status, p.byName]; }))
+    ? [['Date', 'Room', 'Guest', 'Kind', 'Method', 'Sender', 'Reference', 'Amount', 'Status', 'Recorded by']].concat(R.payments.map(function (p) { return [fmtDT(p.at), p.roomNo, p.guestName, PAY_KIND[p.kind] || p.kind, PAY_LABEL[p.method] || p.method, p.sender, p.ref, p.amount, p.status === 'void' ? 'void' : p.status === 'rejected' ? 'refused' : p.status === 'unconfirmed' && p.amount < 0 ? 'refund waiting' : 'recorded', p.byName]; }))
     : [['Date', 'Category', 'Description', 'Paid to', 'Amount', 'Litres', 'Status', 'Recorded by']].concat(R.expenses.map(function (e) { return [fmtDT(e.at), EXPENSE_CATS[e.category] || e.category, e.description, e.paidTo, e.amount, e.litres || '', e.status, e.byName]; }));
-  var csv = rows.map(function (r) { return r.map(function (c) { c = String(c == null ? '' : c); return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(','); }).join('\n');
+  var csv = rows.map(function (r) { return r.map(function (c) { var isNum = typeof c === 'number'; c = String(c == null ? '' : c); if (!isNum && /^[=+\-@]/.test(c)) c = "'" + c; /* a spreadsheet must not run a guest's name as a formula */ return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(','); }).join('\n');
   var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'wiwe-' + kind + '-' + R.month + '.csv'; a.click();
 }
 
@@ -166,6 +221,7 @@ function adminGeneral() {
     field('Check-in time', input('g-in', s.checkInTime, 'type="time"')) + field('Check-out time', input('g-out', s.checkOutTime, 'type="time"')) +
     field('Hold reservations for (hours)', input('g-hold', s.holdHours, 'type="number" min="0"'), '', 'After the expected arrival time') +
     field('Approval needed above (₦)', input('g-limit', s.approvalLimit, 'inputmode="numeric"'), '', 'Expenses and purchases above this wait for you') +
+    '<label class="check" style="grid-column:1/-1"><input type="checkbox" id="g-reqid"' + (s.requireId ? ' checked' : '') + '>Check-in needs an ID number or a photo of the ID</label>' +
     '</div>', true) +
     fold('g-places', 'Places', field('Common areas (one per line)', '<textarea id="g-areas">' + esc((s.commonAreas || []).join('\n')) + '</textarea>', '', 'Used for maintenance and assets, e.g. Generator house, Reception')) +
     fold('g-clean', 'Cleaning checklists', '<div class="fields">' + field('Turnover (after check-out)', '<textarea id="g-turn" rows="10">' + esc((s.turnoverSteps || []).join('\n')) + '</textarea>', '', 'One step per line. Steps with the word "kitchen" only show for kitchen rooms.') +
@@ -177,7 +233,8 @@ function adminGeneral() {
 }
 function lines(id) { return val(id).split('\n').map(function (l) { return l.trim(); }).filter(Boolean); }
 function saveGeneral() {
-  var d = { cautionEnabled: val('g-caution'), cautionAmount: num(val('g-camt')), checkInTime: val('g-in'), checkOutTime: val('g-out'), holdHours: num(val('g-hold')), approvalLimit: num(val('g-limit')), commonAreas: lines('g-areas'), turnoverSteps: lines('g-turn'), dailySteps: lines('g-daily'), dailyCleaning: val('g-dailyon'), linenItems: lines('g-linen'), idPhotoMonths: num(val('g-idm')) };
+  var d = { cautionEnabled: val('g-caution'), cautionAmount: num(val('g-camt')), checkInTime: val('g-in'), checkOutTime: val('g-out'), holdHours: num(val('g-hold')), approvalLimit: num(val('g-limit')), commonAreas: lines('g-areas'), turnoverSteps: lines('g-turn'), dailySteps: lines('g-daily'), dailyCleaning: val('g-dailyon'), linenItems: lines('g-linen'), idPhotoMonths: num(val('g-idm')), requireId: val('g-reqid') };
+  viewDirty = false;
   db.collection('settings').doc('general').set(d, { merge: true }).catch(fail); audit('settings_saved', 'settings', 'general', ''); toast('Settings saved');
 }
 
@@ -379,7 +436,7 @@ function loadAudit() {
   }).catch(fail);
 }
 async function backup() {
-  var cols = ['rooms', 'roomTypes', 'users', 'stays', 'payments', 'tasks', 'jobs', 'assets', 'vendors', 'items', 'moves', 'expenses', 'incidents', 'settings', 'audit'], out = { app: 'wiwe', version: APP_VERSION, at: new Date().toISOString() };
+  var cols = ['rooms', 'roomTypes', 'users', 'stays', 'payments', 'tasks', 'jobs', 'assets', 'vendors', 'items', 'moves', 'expenses', 'incidents', 'laundry', 'shifts', 'usernames', 'settings', 'audit'], out = { app: 'wiwe', version: APP_VERSION, at: new Date().toISOString() };
   toast('Preparing backup…');
   try {
     for (var i = 0; i < cols.length; i++) { var s = await db.collection(cols[i]).get(); out[cols[i]] = s.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); }
@@ -414,30 +471,29 @@ async function purgeOldIdPhotos() {
 function dailySummaryText(day) {
   var from = parseDate(day).getTime(), to = from + 86400000;
   function inDay(t) { return t >= from && t < to; }
-  var pays = S.data.payments.filter(function (p) { return inDay(p.at) && p.status !== 'void' && p.amount > 0; });
-  var conf = pays.filter(function (p) { return p.status === 'confirmed'; });
+  var pays = allPayments().filter(function (p) { return inDay(p.at) && payCounts(p) && p.amount > 0; });
+  var by = function (m) { return money(sum(pays.filter(function (p) { return p.method === m; }), function (p) { return p.amount; })); };
   var exps = S.data.expenses.filter(function (e) { return inDay(e.at) && e.status !== 'rejected' && e.status !== 'void'; });
   var ins = S.data.stays.filter(function (s) { return inDay(s.checkedInAt); }).length, outs = S.data.stays.filter(function (s) { return inDay(s.checkedOutAt); }).length;
   var rooms = roomsSorted(), occ = rooms.filter(function (r) { return r.status === 'occupied'; }).length;
   var sales = S.data.moves.filter(function (m) { return m.type === 'sale' && inDay(m.at); });
-  var shortShifts = S.data.shifts.filter(function (s) { return inDay(s.closedAt) && (s.variance || 0) < 0; });
+  var owe = debtors(), wait = refundsWaiting();
   var lines = ['*Wiwe Apartments · ' + fmtDate(day) + '*', '',
     'Money recorded: ' + money(sum(pays, function (p) { return p.amount; })) + ' (' + pays.length + ' payments)',
-    'Confirmed in bank: ' + money(sum(conf, function (p) { return p.amount; })),
-    'Still to confirm (all days): ' + unconfirmedPayments().length,
+    'POS: ' + by('pos') + ' · Bank transfer: ' + by('transfer'),
     'Item sales: ' + money(sum(sales, function (m) { return m.total; })),
     'Spent: ' + money(sum(exps, function (e) { return e.amount; })) + (pendingExpenses().length ? ' · ' + pendingExpenses().length + ' waiting for your approval' : ''),
+    'Guests owing: ' + money(sum(owe, function (s) { return s.balance; })) + ' (' + owe.length + ')',
     '', 'Check-ins: ' + ins + ' · Check-outs: ' + outs, 'Occupied now: ' + occ + ' of ' + rooms.length];
   var flags = [];
   S.data.stays.filter(isOverstay).forEach(function (s) { flags.push('Overstay: Room ' + s.roomNo + ' (' + s.guestName + ')'); });
-  shortShifts.forEach(function (s) { flags.push('Cash short ' + money(-s.variance) + ' at end of ' + s.openedByName + "'s shift"); });
+  if (wait.length) flags.push(wait.length + ' refund(s) waiting for your approval');
   openIncidents().slice(0, 6).forEach(function (i) { flags.push(i.title); });
   if (lowStock().length) flags.push(lowStock().length + ' store item(s) low');
   if (openJobs().length) flags.push(openJobs().length + ' open repair job(s)');
   if (flags.length) lines.push('', '*Needs attention*'); flags.forEach(function (f) { lines.push('• ' + f); });
   return lines.join('\n');
-}
-function dailySummaryCard() {
+}function dailySummaryCard() {
   var day = addDays(todayStr(), -1), text = dailySummaryText(day);
   // Buttons stay visible; the full text folds away to save scrolling
   return '<div class="card"><div class="card-head"><h2>Yesterday in brief</h2><div class="row"><a class="btn small primary" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent(text) + '">WhatsApp</a>' +
@@ -453,14 +509,14 @@ function copySummary() {
 // Older rules have no "invites" section, so even the owner is refused this harmless read.
 async function checkRules() {
   if (!isAdmin()) return;
-  try { await db.collection('invites').doc('rules-check').get({ source: 'server' }); S.rulesOutdated = false; }
+  try { await db.collection('meta').doc('rules').get({ source: 'server' }); S.rulesOutdated = false; } // "meta/rules" is only readable under the v3 rules
   catch (e) { S.rulesOutdated = /permission/i.test((e && (e.code || e.message)) || ''); }
   scheduleRender();
 }
 function openRulesHelp() {
   var pid = FIREBASE_CONFIG.projectId;
   openModal('Update the security rules',
-    '<div class="note warn">The app was updated but the database is still using older security rules, so some actions (renaming usernames, onboarding, hand-overs, laundry, shifts) are refused.</div>' +
+    '<div class="note warn">The app was updated but the database is still using older security rules, so some actions (recording payments, check-in, reservations with a deposit, sales) are refused.</div>' +
     '<ol style="margin:0;padding-left:20px;line-height:1.8">' +
     '<li>Open the latest rules: <a href="https://github.com/SSSeyon/wiwe/blob/main/firestore.rules" target="_blank" rel="noopener">firestore.rules on GitHub</a>, then click the <strong>Copy raw file</strong> button (two squares icon).</li>' +
     '<li>Open <a href="https://console.firebase.google.com/project/' + esc(pid) + '/firestore/rules" target="_blank" rel="noopener">Firebase → Firestore → Rules</a>.</li>' +

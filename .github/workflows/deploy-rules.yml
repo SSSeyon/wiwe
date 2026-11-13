@@ -1,0 +1,22 @@
+name: Publish security rules
+
+on:
+  push:
+    branches: [main]
+    paths: ['firestore.rules']
+  workflow_dispatch: {}    # lets you run it by hand from the Actions tab
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install
+        run: npm install --no-save --no-package-lock firebase-admin@12.7.0
+      - name: Publish firestore.rules
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/deploy-rules.mjs

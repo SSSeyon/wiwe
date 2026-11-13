@@ -51,7 +51,7 @@ One person can hold several roles. Roles are enforced in `firestore.rules`, not 
 
 ## 4. Anti-leak controls
 
-- **Payments.** Every payment is recorded as *Unconfirmed* with the sender name, reference and receipt photo. Only the admin can mark it *Seen in bank* or *Not received*. "Not received" creates an incident.
+- **Payments.** _(Replaced in v3.0.0: payments are final when recorded, see section 22.)_ Every payment was recorded as *Unconfirmed* with the sender name, reference and receipt photo. Only the admin can mark it *Seen in bank* or *Not received*. "Not received" creates an incident.
 - **Rates.** Front desk can't change rates. Discounts need a reason and stay *pending* until the owner approves. A rejected discount is added back to the guest's balance.
 - **Room state machine.**
   - Check-out → Dirty (cleaning task created automatically) → Cleaning → Inspection → Ready. A room can't be checked in unless it's Ready.
@@ -93,7 +93,7 @@ Timestamps are epoch milliseconds. Dates are `YYYY-MM-DD` strings in local (Lago
   - WhatsApp/SMS check-in messages to guests
   - Payroll
   - Prepaid meter top-up log per room
-  - A daily summary pushed to the owner
+  - Restore from a backup file
 
 ## 7. Branding and room board (v1.2.0)
 
@@ -188,7 +188,7 @@ Timestamps are epoch milliseconds. Dates are `YYYY-MM-DD` strings in local (Lago
 - **Laundry:** Housekeeping → Laundry. Count pieces out and back. Shortages create a `laundry_short` incident, and the bill becomes an expense. Linen types are set in Admin settings → General.
 - **Shift handover:** the Shift page, for front desk and managers.
   - Start shift: everything the person records is counted (check-ins and outs, payments by method, sales, refunds, expenses).
-  - End shift: the person counts the cash. Being short creates a `cash_short` incident.
+  - _(Replaced in v3.0.0 by the POS total check, see section 22.)_ End shift: the person counts the cash. Being short creates a `cash_short` incident.
   - The next person accepts or disputes the handover; a dispute creates a `handover_dispute` incident. Accepting starts their own shift.
 - **Daily summary:** a "Yesterday in brief" card on Today with Send to WhatsApp and Copy buttons.
 - **New Firestore collections:** `laundry` and `shifts`. Re-publish `firestore.rules`.
@@ -286,3 +286,57 @@ Do this once, after publishing the rules:
   - Pull down at the top of a page to refresh (reconnects Firestore, checks for an app update). The browser's own pull-to-reload is turned off on phones (`overscroll-behavior-y`).
   - Form drafts: anything typed into a pop-up form is kept in localStorage (`wiwe_draft_<pop-up title>`, 12 hours) until that form is saved. Reopening the same pop-up brings it back with a "Start empty" link. Photos and passwords are never kept; pre-filled amounts are only kept if someone changed them.
 - **Part payments:** check-in, extend and balance payment ask for confirmation when the amount received is less than the amount due, stating how much will be owed.
+
+## 22. v3.0.0: POS payments, no confirmation step, receipts, deposits, safer rules
+
+**Publish `firestore.rules` BEFORE (or together with) this version.** The v3 rules accept everything the old app writes, but the old rules refuse what the v3 app writes (payments saved as recorded). `.github/workflows/deploy-rules.yml` publishes the rules whenever `firestore.rules` changes on main, using the `FIREBASE_SERVICE_ACCOUNT` secret. If that job fails with a permission error, paste the rules into the Firebase console by hand (or give the service account the "Firebase Rules Admin" role). The owner sees a "Security rules need updating" alert until the v3 rules are live (the app probes `meta/rules`).
+
+### Payments
+- **Methods:** POS (default) and bank transfer (for deposits paid from far away). **Cash is not accepted** and is gone from every form. Old cash records still show as "Cash".
+- **No owner confirmation.** A payment is final when recorded (`status: 'confirmed'`). Old `unconfirmed` payments with a positive amount are treated as recorded. "Seen in bank", "Not received", the Confirm payments card and the unconfirmed counters are removed.
+- **Refunds still wait for the owner:** early check-out refunds (`refund_early`) and deposit refunds (`refund_deposit`) are saved as negative `unconfirmed` payments; the owner approves or refuses them in Payments → Refunds.
+- **Reference is required** for every payment, and a reference already used on another payment asks for confirmation and is flagged (Payments → Same reference, and in Reports). Two parts of one payment (room + caution within 2 minutes on the same stay) are not flagged.
+- **Void (owner):** voiding a room, extension, balance or deposit payment puts the amount back on the guest's balance; voiding a caution payment reduces the caution held.
+- **Balances use `FieldValue.increment`** everywhere (extend, balance payment, item on room bill, discount rejected, void), so two phones or an offline phone cannot overwrite each other.
+- Payments view: today's totals by POS and by transfer, search by reference/guest/room, tabs All / Refunds / Same reference / Void. The owner's Today page lists today's payments to compare with the terminal's end-of-day total.
+
+### Bookings and guests
+- **Check-in checks for clashes:** a walk-in cannot be checked into a room that is reserved within the nights asked for (warning in the form, refusal on save).
+- **Deposits on reservations** (`kind: 'deposit'`, stay fields `deposit`, `paid`). The deposit is taken off the amount due at check-in. Cancelling or marking a no-show asks whether to refund it (owner approves) or keep it.
+- **Booking source** (`source`: walkin, phone, returning, referral, airbnb, booking, other) on reservations and check-ins; Reports shows where guests came from.
+- **Guest register:** home address, number of guests, vehicle plate. Admin settings → General → "Check-in needs an ID number or a photo of the ID" (`settings.requireId`, off by default).
+- **Receipt / booking confirmation:** the Receipt button on a stay gives text to send by WhatsApp, copy or print.
+- **Guests owing:** a guest can be checked out owing (after a warning); the debt can be taken from the caution fee at check-out (`cautionApplied`), is listed under Stays → Owing, raises an OWES alert, and can be paid later with "Record balance payment". A listener on `stays where balance > 0` keeps debtors visible however old.
+- Caution fully used at check-out now shows as "kept in full" (`cautionStatus: 'kept'`), not "refunded".
+
+### Shifts
+- No cash count. At the end of a shift the person enters the POS terminal's total (optional); a difference from the POS payments they recorded creates a `pos_mismatch` incident.
+
+### Reports
+- Income = room money (room, extension, balance, deposit, damage, less approved early-check-out and deposit refunds) + item sales paid at the counter + caution kept. Average room rate uses room money only.
+- New: next 30 days booked, guests owing, average turnover cleaning time, where guests came from, payments voided, payments sharing a reference, refunds paid, checked out still owing, and a "Last 6 months" table (read on request).
+- CSV export labels kinds and methods and cannot run a guest's name as a spreadsheet formula.
+
+### Security rules (v3)
+- A stay's `rate` must be the room type's rate when the bill is first made, and cannot change afterwards; the bill cannot shrink (total − nights × rate never goes down) unless the owner does it. `paid` and `balance` are still trusted to the app: the rules cannot see the payments behind them.
+- Only front desk or a manager can set a room to Ready or finish a turnover task (the inspection).
+- Usernames can be looked up one at a time but not listed; photos can be opened one at a time but only the owner can list them; item quantity must be a number; payments and expenses need a numeric amount.
+- In the app, every record is cleaned as it arrives (`clean()` / `docRows()` in js/core.js): number fields are forced to numbers and odd record ids are dropped, so stored text cannot become page code.
+- The activity-log entry is saved in the same batch as the action for check-in, check-out, extend, balance payment, sale, void, refunds, reservations, discounts, stay edits and shifts.
+
+### Reliability
+- Firebase and font files load with `crossorigin`, so the service worker can save them and the app starts offline. If they cannot be loaded at all the boot screen says so and offers "Try again".
+- The service worker waits at most 3 seconds for the network when it already holds a copy.
+- Typing in Admin settings is no longer wiped by background refreshes (`viewDirty`).
+- Daily cleaning tasks are created when the date changes even if the app is left open.
+- Rows that open something can be reached with Tab and opened with Enter.
+- Backup (Admin → Backup) now includes laundry, shifts and usernames.
+
+### Emails (GitHub Actions, same four secrets)
+- `daily-summary.yml`: updated figures (POS / transfer, guests owing, refunds waiting). **On Mondays it attaches a zipped backup** of everything except photos; run it by hand with the "backup" box ticked for one any time.
+- `urgent-alerts.yml` (new, about hourly): emails only when something new needs the owner: an incident, an overstay one hour past check-out, a guest checked out owing, a refund or an expense waiting for approval. It remembers its last run in `meta/alerts`.
+- `deploy-rules.yml` (new): publishes `firestore.rules`.
+
+### Not done
+- No restore from a backup file, no automated tests, no separate test database, no App Check, no content security policy (the app uses inline handlers), and record times still come from the phone's clock.
+- The v3 rules and the three scripts were written without a way to run them here (no Node, no rules emulator). The app itself was tested against a local mock database only.

@@ -19,6 +19,7 @@ function createTurnoverTask(room, stay, note) {
 }
 // Daily service for guests staying more than one night: one task per stay per day (fixed id, so it is never doubled)
 async function ensureDailyTasks() {
+  S.dailyDay = todayStr(); // the minute timer calls this again when the date changes, so an app left open still gets its tasks
   if (S.settings.dailyCleaning === false) return;
   if (!has('manager', 'frontdesk')) return;
   var t = todayStr();
@@ -409,7 +410,7 @@ VIEWS.inventory = {
     }
     if (tab === 'sales') {
       html += sales.length ? '<div class="table-wrap"><table><thead><tr><th>When</th><th>Item</th><th class="right">Qty</th><th class="right">Total</th><th>Buyer</th><th>Paid</th><th>By</th></tr></thead><tbody>' + sales.slice(0, 200).map(function (m) {
-        return '<tr><td>' + fmtDT(m.at) + '</td><td>' + esc(m.itemName) + '</td><td class="right">' + (-m.qty) + '</td><td class="right money">' + money(m.total) + '</td><td>' + esc(m.roomNo ? 'Room ' + m.roomNo + (m.guestName ? ' · ' + m.guestName : '') : (m.to || 'Walk-in')) + '</td><td>' + (m.onBill ? pill('On room bill', 'st-alert') : pill(PAY_METHODS[m.method] || 'Paid', 'st-ready')) + '</td><td>' + esc(m.byName || '') + '</td></tr>';
+        return '<tr><td>' + fmtDT(m.at) + '</td><td>' + esc(m.itemName) + '</td><td class="right">' + (-m.qty) + '</td><td class="right money">' + money(m.total) + '</td><td>' + esc(m.roomNo ? 'Room ' + m.roomNo + (m.guestName ? ' · ' + m.guestName : '') : (m.to || 'Walk-in')) + '</td><td>' + (m.onBill ? pill('On room bill', 'st-alert') : pill(PAY_LABEL[m.method] || 'Paid', 'st-ready')) + '</td><td>' + esc(m.byName || '') + '</td></tr>';
       }).join('') + '</tbody></table></div>' : '<div class="card empty">No sales yet.</div>';
     }
     if (tab === 'usage') {
@@ -477,7 +478,7 @@ function openSell(itemId) {
     '</div><fieldset class="group"><legend>Payment</legend>' +
     payChoices('sl-pay', ' onchange="slCalc()"') +
     '<label class="choice" id="sl-bill-opt"><input type="radio" name="sl-pay" value="bill" onchange="slCalc()">Add to room bill</label></div>' +
-    '<div class="fields" id="sl-ref-wrap">' + field('Reference', input('sl-ref', '', ''), '', 'Needed for transfer and POS') + '</div></fieldset>' +
+    '<div class="fields" id="sl-ref-wrap">' + field('Reference on the POS slip', input('sl-ref', '', 'autocomplete="off"')) + '</div></fieldset>' +
     '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Record sale</button></div></form>';
   openModal('Record sale', b); slCalc(true);
 }
@@ -486,24 +487,25 @@ function slCalc(itemChanged) {
   if (itemChanged || !val('sl-price')) $('sl-price').value = it.sellPrice || 0;
   $('sl-total').textContent = money(num(val('sl-qty')) * num(val('sl-price')));
   var guest = val('sl-buyer'); $('sl-bill-opt').classList.toggle('hidden', !guest);
-  if (!guest && radio('sl-pay') === 'bill') document.querySelector('input[name="sl-pay"][value="transfer"]').checked = true;
+  if (!guest && radio('sl-pay') === 'bill') document.querySelector('input[name="sl-pay"][value="pos"]').checked = true;
   $('sl-ref-wrap').classList.toggle('hidden', ['transfer', 'pos'].indexOf(radio('sl-pay')) < 0);
 }
 function saveSell() {
-  var it = byId(S.data.items, val('sl-item')), q = Math.max(1, num(val('sl-qty'))), price = num(val('sl-price')), total = q * price, pay = radio('sl-pay'), stay = byId(S.data.stays, val('sl-buyer'));
-  rememberPayMethod(pay);
+  var it = byId(S.data.items, val('sl-item')), q = Math.max(1, num(val('sl-qty'))), price = num(val('sl-price')), total = q * price, pay = radio('sl-pay'), stay = findStay(val('sl-buyer'));
   if (q > it.qty) return toast('Only ' + it.qty + ' in stock', true);
-  if ((pay === 'transfer' || pay === 'pos') && !val('sl-ref')) return toast('Enter the transfer or POS reference', true);
+  if (pay === 'bill' && !stay) return toast('Pick the guest whose bill it goes on', true);
+  if (pay !== 'bill' && !val('sl-ref')) return toast('Enter the reference from the POS slip', true);
+  if (pay !== 'bill' && !refOk(val('sl-ref'), stay ? stay.id : '')) return;
+  if (pay !== 'bill') rememberPayMethod(pay);
   var b = db.batch(), mv = { itemId: it.id, itemName: it.name, type: 'sale', qty: -q, price: price, total: total, unitCost: it.unitCost || 0, roomNo: stay ? stay.roomNo : '', stayId: stay ? stay.id : '', guestName: stay ? stay.guestName : '', onBill: pay === 'bill', method: pay === 'bill' ? '' : pay };
   b.update(db.collection('items').doc(it.id), { qty: FV.increment(-q) });
   b.set(db.collection('moves').doc(), Object.assign(mv, stamp()));
-  if (pay === 'bill') b.update(db.collection('stays').doc(stay.id), { extras: (stay.extras || 0) + total, balance: (stay.balance || 0) + total });
-  else b.set(db.collection('payments').doc(), Object.assign({ stayId: stay ? stay.id : '', roomNo: stay ? stay.roomNo : '', guestName: stay ? stay.guestName : 'Walk-in', amount: total, kind: 'sale', method: pay, sender: '', ref: val('sl-ref'), photos: [], status: 'unconfirmed', note: it.name + ' × ' + q }, stamp()));
+  if (pay === 'bill') b.update(db.collection('stays').doc(stay.id), { extras: FV.increment(total), balance: FV.increment(total) });
+  else b.set(db.collection('payments').doc(), Object.assign({ stayId: stay ? stay.id : '', roomNo: stay ? stay.roomNo : '', guestName: stay ? stay.guestName : 'Walk-in', amount: total, kind: 'sale', method: pay, sender: '', ref: val('sl-ref'), photos: [], status: 'confirmed', note: it.name + ' × ' + q }, stamp()));
+  audit('item_sold', 'item', it.id, it.name + ' × ' + q + ' · ' + money(total) + (stay ? ' · Room ' + stay.roomNo : '') + (pay === 'bill' ? ' · on room bill' : ''), b);
   b.commit().catch(fail);
-  audit('item_sold', 'item', it.id, it.name + ' × ' + q + ' · ' + money(total) + (stay ? ' · Room ' + stay.roomNo : '') + (pay === 'bill' ? ' · on room bill' : ''));
   closeModal(); toast('Sold: ' + it.name + ' × ' + q + (pay === 'bill' ? ' (added to the room bill)' : ''));
-}
-function archiveItem(id) { if (!confirm('Archive this item? It will be hidden from lists.')) return; db.collection('items').doc(id).update({ archived: true }).catch(fail); closeModal(); }
+}function archiveItem(id) { if (!confirm('Archive this item? It will be hidden from lists.')) return; db.collection('items').doc(id).update({ archived: true }).catch(fail); closeModal(); }
 function openReceive() {
   S.form = { recPhotos: [] };
   var b = '<form class="form" onsubmit="event.preventDefault();saveReceive()"><div class="fields">' +
@@ -526,7 +528,7 @@ function saveReceive() {
 function openIssue() {
   var b = '<form class="form" onsubmit="event.preventDefault();saveIssue()"><div class="fields">' +
     field('Item', '<select id="is-item">' + itemOptions('supply') + '</select>') + field('Quantity', input('is-qty', 1, 'type="number" min="1" required')) +
-    field('For room', '<select id="is-room"><option value="">— Not for a room —</option>' + roomsSorted().map(function (r) { return '<option value="' + r.number + '">Room ' + esc(r.number) + '</option>'; }).join('') + '</select>') +
+    field('For room', '<select id="is-room"><option value="">— Not for a room —</option>' + roomsSorted().map(function (r) { return '<option value="' + esc(r.number) + '">Room ' + esc(r.number) + '</option>'; }).join('') + '</select>') +
     field('Given to / purpose', input('is-to', '', 'placeholder="e.g. Blessing, reception, laundry"')) +
     '</div><div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Issue</button></div></form>';
   openModal('Issue from store', b);

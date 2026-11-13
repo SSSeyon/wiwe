@@ -652,3 +652,7 @@ body[data-theme=colour] .next-step{background:linear-gradient(100deg,#4F46E5,#7C
 @keyframes ptrSpin{to{transform:rotate(360deg)}}
 /* restored form draft */
 .draft-note{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
+
+/* ---------- v3.0: guest receipt (screen and print) ---------- */
+.receipt{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:14px}
+@media print{body>*:not(#modal){display:none!important}#modal{position:static!important;background:none!important;padding:0!important;display:block!important}#modal .modal-card{box-shadow:none!important;max-width:none!important;max-height:none!important;border:0!important;overflow:visible!important}#modal .modal-body{overflow:visible!important;max-height:none!important}#modal .modal-head button,.no-print{display:none!important}.receipt{border:0;background:none;color:#000;font-size:13pt;padding:0}}

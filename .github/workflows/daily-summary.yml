@@ -3,7 +3,12 @@ name: Daily summary email
 on:
   schedule:
     - cron: '30 5 * * *'   # 05:30 UTC = 06:30 in Lagos, every day
-  workflow_dispatch: {}    # lets you run it by hand from the Actions tab
+  workflow_dispatch:       # run it by hand from the Actions tab; tick the box to attach a backup
+    inputs:
+      backup:
+        description: Attach a full backup to the email
+        type: boolean
+        default: false
 
 jobs:
   send:
@@ -21,4 +26,5 @@ jobs:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           SUMMARY_TO: ${{ secrets.SUMMARY_TO }}
+          BACKUP: ${{ inputs.backup && '1' || '0' }}
         run: node scripts/daily-summary.mjs
