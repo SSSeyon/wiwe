@@ -30,18 +30,6 @@
 
 <div id="login" class="login hidden"></div>
 
-<div class="corner" id="corner" aria-label="Appearance">
-  <div class="theme-pick" id="themePick">
-    <button type="button" class="sw sw-current" id="themeCurrent" onclick="toggleThemeMenu()" aria-haspopup="true" aria-expanded="false" title="Colour scheme" aria-label="Colour scheme"></button>
-    <div class="theme-menu hidden" id="themeMenu" role="radiogroup" aria-label="Colour scheme">
-      <button type="button" role="radio" class="tm-opt" data-t="colour" onclick="setTheme('colour')"><span class="sw sw-colour"></span>Colourful</button>
-      <button type="button" role="radio" class="tm-opt" data-t="mono" onclick="setTheme('mono')"><span class="sw sw-mono"></span>Black &amp; white</button>
-      <button type="button" role="radio" class="tm-opt" data-t="cream" onclick="setTheme('cream')"><span class="sw sw-cream"></span>Black &amp; cream</button>
-    </div>
-  </div>
-  <button type="button" class="theme-btn" id="darkSwitch" aria-label="Switch to dark mode" title="Switch to dark mode" onclick="toggleDark()"><span id="darkIcon" aria-hidden="true">☀️</span></button>
-</div>
-
 <div id="app" class="app hidden">
   <header class="appbar">
     <button type="button" class="home-link" onclick="go('home')" aria-label="Home"><img class="logo-img" src="img/logo.png" alt="Wiwe Apartments"></button>
@@ -74,6 +62,7 @@
   </div>
 </div>
 
+<div id="dialog" class="dialog hidden"></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <input type="file" id="photoInput" accept="image/*" capture="environment" hidden>
 </body>

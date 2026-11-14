@@ -45,15 +45,15 @@ VIEWS.shift = {
     var mine = myOpenShift(), wait = handoverWaiting(), html = '';
     if (wait && !mine) {
       html += '<div class="card"><div class="card-head"><h2>Handover from ' + esc(wait.openedByName) + '</h2>' + pill('Waiting for you', 'st-alert') + '</div>' +
-        '<div class="muted" style="margin-bottom:10px">' + fmtDT(wait.openedAt) + ' → ' + fmtDT(wait.closedAt) + '</div>' + summaryHtml(wait.summary || {}) +
-        '<div style="margin-top:10px">' + shiftCheck(wait) + '</div>' +
-        (wait.notes ? '<div class="note" style="margin-top:10px"><strong>Notes:</strong> ' + esc(wait.notes) + '</div>' : '') +
-        '<div class="row" style="margin-top:12px"><button class="btn primary" type="button" onclick="acceptHandover(\'' + wait.id + '\', true)">Everything matches: accept and start my shift</button><button class="btn danger" type="button" onclick="acceptHandover(\'' + wait.id + '\', false)">Something doesn\'t match</button></div></div>';
+        '<div class="muted mb-2">' + fmtDT(wait.openedAt) + ' → ' + fmtDT(wait.closedAt) + '</div>' + summaryHtml(wait.summary || {}) +
+        '<div class="mt-2">' + shiftCheck(wait) + '</div>' +
+        (wait.notes ? '<div class="note mt-2"><strong>Notes:</strong> ' + esc(wait.notes) + '</div>' : '') +
+        '<div class="row mt-3"><button class="btn primary" type="button" onclick="acceptHandover(\'' + wait.id + '\', true)">Everything matches: accept and start my shift</button><button class="btn danger" type="button" onclick="acceptHandover(\'' + wait.id + '\', false)">Something doesn\'t match</button></div></div>';
     }
     if (mine) {
       var sm = shiftSummary(S.user.uid, mine.openedAt);
       html += '<div class="card"><div class="card-head"><h2>Your shift</h2>' + pill('Open since ' + fmtTime(mine.openedAt), 'st-ready') + '</div>' + summaryHtml(sm) +
-        '<div class="row" style="margin-top:12px"><button class="btn primary" type="button" onclick="openCloseShift()">End shift and hand over</button></div></div>';
+        '<div class="row mt-3"><button class="btn primary" type="button" onclick="openCloseShift()">End shift and hand over</button></div></div>';
     } else if (!wait) {
       html += '<div class="card"><h2>No shift open</h2><p class="muted">Start your shift when you take over the front desk. Everything you record is counted for the handover.</p><button class="btn primary" type="button" onclick="startShift()">Start my shift</button></div>';
     }
@@ -81,10 +81,10 @@ function openCloseShift() {
     '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">End shift</button></div></form>';
   openModal('End shift', b);
 }
-function closeShift() {
+async function closeShift() {
   var mine = myOpenShift(), now = Date.now(), sm = shiftSummary(S.user.uid, mine.openedAt, now), raw = val('sh-pos');
   var counted = raw === '' ? null : num(raw), variance = counted == null ? 0 : counted - sm.payments.pos;
-  if (variance && !confirm('The terminal shows ' + money(counted) + ' but ' + money(sm.payments.pos) + ' was recorded in the app.\n\nOK = end the shift and report the ' + money(Math.abs(variance)) + ' difference to the owner.\nCancel = go back and check.')) return;
+  if (variance && !(await ask({ title: 'POS total does not match', text: 'The terminal shows ' + money(counted) + ' but ' + money(sm.payments.pos) + ' was recorded in the app. The ' + money(Math.abs(variance)) + ' difference is reported to the owner.', ok: 'End shift and report', cancel: 'Go back and check', danger: true }))) return;
   var b = db.batch();
   b.update(db.collection('shifts').doc(mine.id), { status: 'closed', closedAt: now, summary: sm, posCounted: counted, posExpected: sm.payments.pos, variance: variance, notes: val('sh-notes') });
   if (variance) b.set(db.collection('incidents').doc(), Object.assign({ type: 'pos_mismatch', title: 'POS total ' + (variance > 0 ? 'higher' : 'lower') + ' than recorded by ' + money(Math.abs(variance)) + ' at end of ' + meName() + '\'s shift', resolved: false }, stamp()));
@@ -92,9 +92,9 @@ function closeShift() {
   b.commit().catch(fail);
   closeModal(); toast('Shift ended. Waiting for the next person to accept.');
 }
-function acceptHandover(id, ok) {
+async function acceptHandover(id, ok) {
   var s = byId(S.data.shifts, id), note = '';
-  if (!ok) { note = prompt('What doesn\'t match? (POS total, keys, guests, anything)'); if (!note) return; }
+  if (!ok) { note = await askText({ title: 'Something doesn\'t match', label: 'What? (POS total, keys, guests, anything)', ok: 'Report to owner', danger: true }); if (!note) return; }
   var b = db.batch(), now = Date.now();
   b.update(db.collection('shifts').doc(id), { acceptedBy: S.user.uid, acceptedByName: meName(), acceptedAt: now, disputed: !ok, acceptNote: note });
   if (!ok) b.set(db.collection('incidents').doc(), Object.assign({ type: 'handover_dispute', title: meName() + ' disputed the handover from ' + s.openedByName + ': ' + note, resolved: false }, stamp()));

@@ -62,7 +62,7 @@ VIEWS.housekeeping = {
     var html = hkTabs + '<section class="grid-stats">' + stat('To do', todo.length, '') + stat('In progress', mine.length + others.length, '') + stat('Waiting inspection', inspect.length, '', inspect.length && boss ? 'warn' : '') + stat('Done today', doneToday.length, '') + '</section>';
     if (boss && inspect.length) html += '<div class="card"><h2>Waiting for inspection</h2><div class="task-grid">' + inspect.map(taskCard).join('') + '</div></div>';
     if (mine.length) html += '<div class="card"><h2>My tasks in progress</h2><div class="task-grid">' + mine.map(taskCard).join('') + '</div></div>';
-    html += '<div class="card"><h2>To do</h2>' + (todo.length ? '<div class="task-grid">' + todo.map(taskCard).join('') + '</div>' : '<div class="muted">Nothing waiting.</div>') + '</div>';
+    html += '<div class="card"><h2>To do</h2>' + (todo.length ? '<div class="task-grid">' + todo.map(taskCard).join('') + '</div>' : emptyState('housekeeping', 'Nothing to clean', 'A cleaning task appears here when a guest checks out.', '', '', true)) + '</div>';
     if (others.length) html += '<div class="card"><h2>Others in progress</h2><div class="task-grid">' + others.map(taskCard).join('') + '</div></div>';
     if (!boss && inspect.length) html += '<div class="card"><h2>Sent for inspection</h2><div class="task-grid">' + inspect.map(taskCard).join('') + '</div></div>';
     html += '<div class="card"><h2>Done today</h2>' + (doneToday.length ? doneToday.map(function (t) { return '<div class="list-row clickable" onclick="go(\'task\',{id:\'' + t.id + '\'})"><span class="main-t"><strong>Room ' + esc(t.roomNo) + ' · ' + esc((TASK_TYPE[t.type] || [''])[0]) + '</strong><span>' + esc(t.assigneeName || '') + ' · ' + fmtTime(t.doneAt) + '</span></span>' + pill('Done', 'st-ready') + '</div>'; }).join('') : '<div class="muted">Nothing yet.</div>') + '</div>';
@@ -90,21 +90,21 @@ VIEWS.task = {
   eyebrow: function () { var t = byId(S.data.tasks, S.params.id); return t ? (TASK_TYPE[t.type] || [''])[0] : ''; },
   actions: function () { return '<button class="btn" type="button" onclick="go(\'housekeeping\')">← All tasks</button>'; },
   render: function () {
-    var t = byId(S.data.tasks, S.params.id); if (!t) return '<div class="card empty">Task not found.</div>';
+    var t = byId(S.data.tasks, S.params.id); if (!t) return emptyState('housekeeping', 'Task not found', 'It may be older than the last 300 tasks kept on this phone.', 'All tasks', "go('housekeeping')");
     var ts = TASK_STATUS[t.status], p = taskProgress(t), editable = t.status === 'in_progress' && (t.assignee === S.user.uid || has('manager'));
-    var html = '<div class="card"><div class="row between"><div class="row">' + pill(ts[0], ts[1]) + (t.assigneeName ? '<span class="muted">' + esc(t.assigneeName) + '</span>' : '') + '</div><strong style="font-family:var(--font-display);font-size:18px;color:var(--brand)">' + p.d + ' / ' + p.n + '</strong></div>' +
-      '<div class="progress" style="margin-top:10px"><span style="width:' + p.pct + '%"></span></div>' + (t.note ? '<div class="muted" style="margin-top:10px">' + esc(t.note) + '</div>' : '') + (t.sentBack ? '<div class="note bad" style="margin-top:10px">Sent back: ' + esc(t.sentBack) + '</div>' : '') + '</div>';
+    var html = '<div class="card"><div class="row between"><div class="row">' + pill(ts[0], ts[1]) + (t.assigneeName ? '<span class="muted">' + esc(t.assigneeName) + '</span>' : '') + '</div><strong class="task-count">' + p.d + ' / ' + p.n + '</strong></div>' +
+      '<div class="progress mt-2"><span style="width:' + p.pct + '%"></span></div>' + (t.note ? '<div class="muted mt-2">' + esc(t.note) + '</div>' : '') + (t.sentBack ? '<div class="note bad mt-2">Sent back: ' + esc(t.sentBack) + '</div>' : '') + '</div>';
     if (t.status === 'todo') html += '<button class="btn primary block" type="button" onclick="startTask(\'' + t.id + '\')">Start ' + (t.type === 'turnover' ? 'cleaning' : 'task') + '</button>';
     html += '<div class="card"><h2>Checklist</h2>' + (t.steps || []).map(function (s, i) { return '<label class="step' + (s.done ? ' done' : '') + '"><input type="checkbox"' + (s.done ? ' checked' : '') + (editable ? '' : ' disabled') + ' onchange="toggleStep(\'' + t.id + '\',' + i + ',this.checked)"><span>' + esc(s.label) + '</span></label>'; }).join('') + '</div>';
     html += '<div class="card"><div class="card-head"><h2>Restocked from store</h2>' + (editable ? '<button class="btn small" type="button" onclick="openRestock(\'' + t.id + '\')">+ Add</button>' : '') + '</div>' +
-      ((t.restock || []).length ? '<div class="chips">' + t.restock.map(function (r) { return '<span class="chip">' + esc(r.name) + ' × ' + r.qty + '</span>'; }).join('') + '</div><div class="muted small" style="margin-top:8px">Taken out of store stock and logged to Room ' + esc(t.roomNo) + '.</div>' : '<div class="muted">Nothing yet. Log every item you put in the room.</div>') + '</div>';
+      ((t.restock || []).length ? '<div class="chips">' + t.restock.map(function (r) { return '<span class="chip">' + esc(r.name) + ' × ' + r.qty + '</span>'; }).join('') + '</div><div class="muted small mt-2">Taken out of store stock and logged to Room ' + esc(t.roomNo) + '.</div>' : '<div class="muted">Nothing yet. Log every item you put in the room.</div>') + '</div>';
     html += '<div class="card"><div class="card-head"><h2>Photos</h2>' + (editable ? '<button class="btn small" type="button" onclick="addTaskPhoto(\'' + t.id + '\')">+ Photo</button>' : '') + '</div>' + ((t.photos || []).length ? '<div class="thumbs">' + thumbs(t.photos) + '</div>' : '<div class="muted">A photo of the finished room helps inspection.</div>') + '</div>';
     if (editable) {
       html += '<div class="row">' + (t.type === 'turnover' ? '<button class="btn primary" type="button" onclick="finishTask(\'' + t.id + '\')">Send for inspection</button>' : '<button class="btn primary" type="button" onclick="finishTask(\'' + t.id + '\')">Mark done</button>') +
         '<button class="btn" type="button" onclick="openReport(\'' + t.roomId + '\')">Report a fault</button></div>';
     }
     if (t.status === 'inspection' && has('manager', 'frontdesk')) {
-      html += '<div class="card"><h2>Inspection</h2><div class="muted" style="margin-bottom:10px">Walk into the room. Check the bed, bathroom, floor, smell, and that everything works.</div><div class="row"><button class="btn primary" type="button" onclick="passInspection(\'' + t.id + '\')">Passed · room is Ready</button><button class="btn danger" type="button" onclick="failInspection(\'' + t.id + '\')">Send back</button></div></div>';
+      html += '<div class="card"><h2>Inspection</h2><div class="muted mb-2">Walk into the room. Check the bed, bathroom, floor, smell, and that everything works.</div><div class="row"><button class="btn primary" type="button" onclick="passInspection(\'' + t.id + '\')">Passed · room is Ready</button><button class="btn danger" type="button" onclick="failInspection(\'' + t.id + '\')">Send back</button></div></div>';
     }
     if (t.status === 'done') html += '<div class="note ok">Done ' + fmtDT(t.doneAt) + (t.inspectedByName ? ' · inspected by ' + esc(t.inspectedByName) : '') + '</div>';
     return html;
@@ -133,9 +133,9 @@ function addTaskPhoto(id) {
   };
   inp.click();
 }
-function finishTask(id) {
+async function finishTask(id) {
   var t = byId(S.data.tasks, id), p = taskProgress(t);
-  if (p.d < p.n && !confirm((p.n - p.d) + ' step(s) are not ticked. Continue anyway?')) return;
+  if (p.d < p.n && !(await ask({ title: (p.n - p.d) + ' step' + (p.n - p.d > 1 ? 's' : '') + ' not ticked', text: 'Finish anyway? The inspector will see which steps were skipped.', ok: 'Finish anyway', cancel: 'Go back' }))) return;
   var b = db.batch();
   if (t.type === 'turnover') { b.update(db.collection('tasks').doc(id), { status: 'inspection', finishedAt: Date.now() }); b.update(db.collection('rooms').doc(t.roomId), { status: 'inspect' }); }
   else b.update(db.collection('tasks').doc(id), { status: 'done', doneAt: Date.now() });
@@ -148,8 +148,8 @@ function passInspection(id) {
   if (r && r.status !== 'occupied' && r.status !== 'ooo') b.update(db.collection('rooms').doc(t.roomId), { status: 'ready', readyAt: now });
   b.commit().catch(fail); audit('inspection_passed', 'task', id, 'Room ' + t.roomNo); toast('Room ' + t.roomNo + ' is Ready'); go('housekeeping');
 }
-function failInspection(id) {
-  var why = prompt('What needs fixing?'); if (!why) return;
+async function failInspection(id) {
+  var why = await askText({ title: 'Send back to cleaning', label: 'What needs fixing?', ok: 'Send back', danger: true }); if (!why) return;
   var t = byId(S.data.tasks, id), b = db.batch();
   b.update(db.collection('tasks').doc(id), { status: 'in_progress', sentBack: why });
   b.update(db.collection('rooms').doc(t.roomId), { status: 'cleaning' });
@@ -163,9 +163,9 @@ function openRestock(taskId) {
     '</div><div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Add</button></div></form>';
   openModal('Restock item', b);
 }
-function saveRestock(taskId) {
+async function saveRestock(taskId) {
   var t = byId(S.data.tasks, taskId), it = byId(S.data.items, val('rs-item')), q = Math.max(1, num(val('rs-qty')));
-  if (q > it.qty && !confirm('The store only shows ' + it.qty + ' ' + (it.unit || '') + '. Continue? (This will be flagged in the stock count.)')) return;
+  if (q > it.qty && !(await ask({ title: 'More than the store shows', text: 'The store only shows ' + it.qty + ' ' + (it.unit || '') + '. This will show up in the next stock count.', ok: 'Log ' + q + ' anyway', cancel: 'Change the quantity' }))) return;
   var b = db.batch();
   b.update(db.collection('tasks').doc(taskId), { restock: FV.arrayUnion({ itemId: it.id, name: it.name, qty: q, at: Date.now() }) });
   b.update(db.collection('items').doc(it.id), { qty: FV.increment(-q) });
@@ -198,7 +198,7 @@ VIEWS.maintenance = {
       var verify = S.data.jobs.filter(function (j) { return j.status === 'done'; });
       var closed = S.data.jobs.filter(function (j) { return j.status === 'verified' || j.status === 'cancelled'; }).slice(0, 30);
       html += (verify.length && mgr ? '<div class="card"><h2>Fixed · waiting for you to check</h2>' + verify.map(jobRow).join('') + '</div>' : '') +
-        '<div class="card"><h2>Open</h2>' + (open.length ? open.map(jobRow).join('') : '<div class="muted">No open jobs.</div>') + '</div>' +
+        '<div class="card"><h2>Open</h2>' + (open.length ? open.map(jobRow).join('') : emptyState('maintenance', 'No open jobs', 'Faults reported by anyone on staff show up here.', '', '', true)) + '</div>' +
         '<div class="card"><h2>Recently closed</h2>' + (closed.length ? closed.map(jobRow).join('') : '<div class="muted">Nothing yet.</div>') + '</div>';
     }
     if (tab === 'assets') {
@@ -209,7 +209,7 @@ VIEWS.maintenance = {
       html += list.length ? '<div class="table-wrap"><table><thead><tr><th>Asset</th><th>Location</th><th>Status</th><th>Next service</th><th>Warranty</th><th class="right">Repairs</th></tr></thead><tbody>' + list.map(function (a) {
         var ns = nextService(a), rep = sum(S.data.jobs.filter(function (j) { return j.assetId === a.id; }), function (j) { return j.cost; });
         return '<tr class="clickable" onclick="openAssetDetail(\'' + a.id + '\')"><td><strong>' + esc(a.name) + '</strong><div class="muted small">' + esc(a.category || '') + (a.brand ? ' · ' + esc(a.brand) : '') + '</div></td><td>' + esc(locLabel(a.location)) + '</td><td>' + pill(a.status === 'faulty' ? 'Faulty' : a.status === 'retired' ? 'Retired' : 'Working', a.status === 'faulty' ? 'st-bad' : a.status === 'retired' ? 'st-ooo' : 'st-ready') + '</td><td>' + (ns ? (ns < todayStr() ? pill('Overdue ' + fmtDate(ns), 'st-bad') : fmtDate(ns)) : '—') + '</td><td>' + (a.warrantyUntil ? (a.warrantyUntil < todayStr() ? '<span class="muted">Expired</span>' : fmtDate(a.warrantyUntil)) : '—') + '</td><td class="right money">' + money(rep) + '</td></tr>';
-      }).join('') + '</tbody></table></div>' : '<div class="card empty">No assets yet. Add ACs, generator, fridges, TVs, inverters… so you can track servicing and repair costs.</div>';
+      }).join('') + '</tbody></table></div>' : emptyState('maintenance', 'No assets yet', 'Add the ACs, generator, fridges, TVs and inverters to track servicing and what each one costs in repairs.', mgr ? 'Add asset' : '', 'openAsset()');
     }
     if (tab === 'schedule') {
       var sched = sortBy(S.data.assets.filter(function (a) { return a.serviceDays && a.status !== 'retired'; }), function (a) { return nextService(a); });
@@ -217,23 +217,28 @@ VIEWS.maintenance = {
       html += sched.length ? '<div class="card">' + sched.map(function (a) {
         var ns = nextService(a), late = ns < todayStr(), soon = ns <= addDays(todayStr(), 7);
         return '<div class="list-row"><span class="main-t"><strong>' + esc(a.name) + ' · ' + esc(locLabel(a.location)) + '</strong><span>Every ' + a.serviceDays + ' days · last ' + (a.lastServiced ? fmtDate(a.lastServiced) : 'never') + '</span></span><span class="row">' + pill((late ? 'Overdue · ' : 'Due ') + fmtDate(ns), late ? 'st-bad' : soon ? 'st-alert' : 'st-ready') + (mgr ? '<button class="btn small" type="button" onclick="openService(\'' + a.id + '\')">Log service</button>' : '') + '</span></div>';
-      }).join('') + '</div>' : '<div class="card empty">No service intervals set yet.</div>';
+      }).join('') + '</div>' : emptyState('calendar', 'No service intervals set', 'Give an asset a "Service every (days)" value and it shows up here when it is due.', mgr ? 'Add asset' : '', 'openAsset()');
     }
     if (tab === 'vendors') {
       html += (mgr ? '<div class="row"><button class="btn primary" type="button" onclick="openVendor()">+ Add vendor</button></div>' : '') +
         (S.data.vendors.length ? '<div class="card">' + sortBy(S.data.vendors, function (v) { return v.name; }).map(function (v) {
           var spent = sum(S.data.jobs.filter(function (j) { return j.vendorId === v.id; }), function (j) { return j.cost; });
           return '<div class="list-row' + (mgr ? ' clickable" onclick="openVendor(\'' + v.id + '\')' : '') + '"><span class="main-t"><strong>' + esc(v.name) + '</strong><span>' + esc(v.trade || '') + ' · <a href="tel:' + esc(v.phone || '') + '" onclick="event.stopPropagation()">' + esc(v.phone || '') + '</a></span></span><span class="money">' + money(spent) + '</span></div>';
-        }).join('') + '</div>' : '<div class="card empty">No vendors yet. Add your electrician, plumber, AC technician, generator mechanic…</div>');
+        }).join('') + '</div>' : emptyState('users', 'No vendors yet', 'Add your electrician, plumber, AC technician and generator mechanic, so jobs can be assigned to them.', mgr ? 'Add vendor' : '', 'openVendor()'));
     }
     return html;
   }
 };
 function jobRow(j) {
   var p = j.priority === 'urgent' ? pill('Urgent', 'st-bad') : j.priority === 'high' ? pill('High', 'st-alert') : '';
-  return '<div class="list-row clickable" onclick="openJob(\'' + j.id + '\')"><span class="main-t"><strong>' + esc(j.title) + '</strong><span>' + esc(j.locationLabel || '') + (j.assigneeName ? ' · ' + esc(j.assigneeName) : '') + ' · ' + ago(j.createdAt) + (j.cost ? ' · ' + money(j.cost) : '') + '</span></span><span class="row">' + p + jobPill(j) + '</span></div>';
-}
-function openReport(roomId, ooo) {
+  return recRow({
+    click: "openJob('" + j.id + "')",
+    l1: '<span class="who">' + esc(j.title) + '</span>',
+    l2: dots([j.locationLabel, j.assigneeName ? 'Assigned to ' + j.assigneeName : 'Not assigned']),
+    l3: dots(['Reported ' + ago(j.createdAt) + (j.byName ? ' by ' + j.byName : ''), j.cost ? money(j.cost) : '']),
+    side: '<span class="row">' + p + jobPill(j) + '</span>'
+  });
+}function openReport(roomId, ooo) {
   S.form = { jobPhotos: [] };
   var loc = roomId ? 'room:' + roomId : '';
   var b = '<form class="form" onsubmit="event.preventDefault();saveReport()"><div class="fields">' +
@@ -247,10 +252,10 @@ function openReport(roomId, ooo) {
   openModal('Report an issue', b); jbAssets();
 }
 function jbAssets() { var loc = val('jb-loc'); $('jb-asset').innerHTML = '<option value="">—</option>' + S.data.assets.filter(function (a) { return a.location === loc && a.status !== 'retired'; }).map(function (a) { return '<option value="' + a.id + '">' + esc(a.name) + '</option>'; }).join(''); }
-function saveReport() {
+async function saveReport() {
   var loc = val('jb-loc'), roomId = loc.indexOf('room:') === 0 ? loc.slice(5) : '', ooo = val('jb-ooo') && roomId, b = db.batch(), ref = db.collection('jobs').doc();
   var r = byId(S.data.rooms, roomId);
-  if (ooo && r && r.status === 'occupied' && !confirm('A guest is in this room. Take it out of order anyway?')) return;
+  if (ooo && r && r.status === 'occupied' && !(await ask({ title: 'A guest is in this room', text: 'Take Room ' + r.number + ' out of order anyway?', ok: 'Take out of order', danger: true }))) return;
   b.set(ref, { title: val('jb-title'), description: val('jb-desc'), location: loc, locationLabel: locLabel(loc), roomId: roomId, assetId: val('jb-asset'), priority: val('jb-pri'), status: 'open', photos: S.form.jobPhotos, afterPhotos: [], tookRoomOut: !!ooo, createdAt: Date.now(), by: S.user.uid, byName: meName() });
   if (ooo) b.update(db.collection('rooms').doc(roomId), { status: 'ooo', oooReason: val('jb-title') });
   if (val('jb-asset')) b.update(db.collection('assets').doc(val('jb-asset')), { status: 'faulty' });
@@ -272,7 +277,7 @@ function openJob(id) {
       '<fieldset class="group"><legend>Mark fixed</legend><div class="fields">' + field('What was done?', '<textarea id="jb-fix"></textarea>', 'full') + field('Total cost (₦)', input('jb-cost', '', 'inputmode="numeric"'), '', 'Parts + labour. Becomes an expense.') +
       photoField('afterPhotos', 'Photo after fixing') + photoField('receiptPhotos', 'Receipt') + '</div><div class="row"><button class="btn primary" type="button" onclick="fixJob(\'' + id + '\')">Mark fixed</button><button class="btn danger" type="button" onclick="cancelJob(\'' + id + '\')">Cancel job</button></div></fieldset>';
   }
-  if (j.status === 'done' && has('manager')) b += '<div class="card"><h2>Check the repair</h2><div class="muted" style="margin-bottom:10px">Confirm it really works and the cost is fair before closing.</div><div class="row"><button class="btn primary" type="button" onclick="verifyJob(\'' + id + '\',true)">Works · close job</button><button class="btn danger" type="button" onclick="verifyJob(\'' + id + '\',false)">Not fixed · reopen</button></div></div>';
+  if (j.status === 'done' && has('manager')) b += '<div class="card"><h2>Check the repair</h2><div class="muted mb-2">Confirm it really works and the cost is fair before closing.</div><div class="row"><button class="btn primary" type="button" onclick="verifyJob(\'' + id + '\',true)">Works · close job</button><button class="btn danger" type="button" onclick="verifyJob(\'' + id + '\',false)">Not fixed · reopen</button></div></div>';
   openModal(j.title, b, true);
 }
 function assignJob(id) {
@@ -281,19 +286,19 @@ function assignJob(id) {
   if (w.indexOf('v:') === 0) { upd.vendorId = w.slice(2); var v = byId(S.data.vendors, upd.vendorId); upd.assigneeName = v ? v.name : ''; upd.status = 'assigned'; }
   db.collection('jobs').doc(id).update(upd).catch(fail); toast('Assigned'); closeModal();
 }
-function fixJob(id) {
+async function fixJob(id) {
   var j = byId(S.data.jobs, id), cost = num(val('jb-cost')), note = val('jb-fix');
   if (!note) return toast('Describe what was done', true);
-  if (!S.form.afterPhotos.length && !confirm('No "after" photo. Continue anyway?')) return;
-  if (cost > 0 && !S.form.receiptPhotos.length && !confirm('There is a cost but no receipt photo. Continue anyway?')) return;
+  if (!S.form.afterPhotos.length && !(await ask({ title: 'No "after" photo', text: 'A photo of the repair helps the manager check it.', ok: 'Save without photo', cancel: 'Add a photo' }))) return;
+  if (cost > 0 && !S.form.receiptPhotos.length && !(await ask({ title: 'No receipt photo', text: 'There is a cost of ' + money(cost) + ' but no receipt.', ok: 'Save without receipt', cancel: 'Add the receipt' }))) return;
   var b = db.batch(), now = Date.now();
   b.update(db.collection('jobs').doc(id), { status: 'done', fixNote: note, cost: cost, afterPhotos: S.form.afterPhotos, receiptPhotos: S.form.receiptPhotos, doneAt: now, fixedBy: S.user.uid, fixedByName: meName() });
   if (cost > 0) b.set(db.collection('expenses').doc(), Object.assign({ category: 'repairs', amount: cost, description: j.title + ' · ' + j.locationLabel, location: j.location, jobId: id, photos: S.form.receiptPhotos, status: needsApproval(cost) ? 'pending' : 'approved' }, stamp()));
   b.commit().catch(fail); audit('job_fixed', 'job', id, note + (cost ? ' · ' + money(cost) : '')); closeModal(); toast('Marked fixed. A manager will check it.');
 }
-function verifyJob(id, ok) {
+async function verifyJob(id, ok) {
   var j = byId(S.data.jobs, id), b = db.batch();
-  if (!ok) { var why = prompt('What is still wrong?'); if (!why) return; b.update(db.collection('jobs').doc(id), { status: 'in_progress', reopenNote: why }); }
+  if (!ok) { var why = await askText({ title: 'Not fixed', label: 'What is still wrong?', ok: 'Reopen job', danger: true }); if (!why) return; b.update(db.collection('jobs').doc(id), { status: 'in_progress', reopenNote: why }); }
   else {
     b.update(db.collection('jobs').doc(id), { status: 'verified', verifiedBy: S.user.uid, verifiedByName: meName(), verifiedAt: Date.now() });
     if (j.assetId) b.update(db.collection('assets').doc(j.assetId), { status: 'working' });
@@ -301,10 +306,15 @@ function verifyJob(id, ok) {
   b.commit().catch(fail); audit(ok ? 'job_verified' : 'job_reopened', 'job', id, j.title);
   closeModal();
   var r = byId(S.data.rooms, j.roomId);
-  if (ok && r && r.status === 'ooo' && confirm('Put Room ' + r.number + ' back in service? It will be cleaned and inspected first.')) backInService(r.id);
+  if (ok && r && r.status === 'ooo' && await ask({ title: 'Room ' + r.number + ' back in service?', text: 'It goes to Dirty, so it is cleaned and inspected first.', ok: 'Back in service', cancel: 'Not yet' })) backInService(r.id, true);
   else toast(ok ? 'Job closed' : 'Job reopened');
 }
-function cancelJob(id) { var why = prompt('Why cancel this job?'); if (!why) return; db.collection('jobs').doc(id).update({ status: 'cancelled', cancelNote: why }).catch(fail); audit('job_cancelled', 'job', id, why); closeModal(); }
+async function cancelJob(id) {
+  var j = byId(S.data.jobs, id), why = await askText({ title: 'Cancel this job?', text: j ? j.title : '', label: 'Why?', ok: 'Cancel job', cancel: 'Keep it', danger: true }); if (!why) return;
+  var before = j ? j.status : 'open';
+  db.collection('jobs').doc(id).update({ status: 'cancelled', cancelNote: why }).catch(fail); audit('job_cancelled', 'job', id, why); closeModal();
+  toast('Job cancelled', false, { label: 'Undo', fn: function () { db.collection('jobs').doc(id).update({ status: before, cancelNote: '' }).catch(fail); audit('job_restored', 'job', id, ''); toast('Job open again'); } });
+}
 
 function openAsset(id) {
   var a = byId(S.data.assets, id) || {};
@@ -334,7 +344,7 @@ function openAssetDetail(id) {
   var a = byId(S.data.assets, id), jobs = S.data.jobs.filter(function (j) { return j.assetId === id; }), mgr = has('manager', 'maintenance');
   var b = '<div class="fields">' + info('Category', a.category) + info('Location', locLabel(a.location)) + info('Brand / model', a.brand) + info('Serial', a.serial) + info('Bought', a.purchaseDate ? fmtDate(a.purchaseDate) + (a.cost ? ' · ' + money(a.cost) : '') : '') + info('Warranty until', a.warrantyUntil ? fmtDate(a.warrantyUntil) : '') + info('Service', a.serviceDays ? 'Every ' + a.serviceDays + ' days · next ' + fmtDate(nextService(a)) : 'Not scheduled') + info('Total repairs', money(sum(jobs, function (j) { return j.cost; }))) + '</div>' +
     (a.notes ? '<div class="note">' + esc(a.notes) + '</div>' : '') +
-    '<div><h3 style="font-size:15px;margin-bottom:6px">History</h3>' + (jobs.length ? jobs.map(jobRow).join('') : '<div class="muted">No jobs yet.</div>') + '</div>' +
+    '<div><h3 class="sub-h">History</h3>' + (jobs.length ? jobs.map(jobRow).join('') : '<div class="muted">No jobs yet.</div>') + '</div>' +
     '<div class="row">' + (mgr ? '<button class="btn" type="button" onclick="openAsset(\'' + id + '\')">Edit</button>' + (a.serviceDays ? '<button class="btn" type="button" onclick="openService(\'' + id + '\')">Log service</button>' : '') : '') + '<button class="btn primary" type="button" onclick="closeModal();openReportForAsset(\'' + id + '\')">Report fault</button></div>';
   openModal(a.name, b, true);
 }
@@ -406,24 +416,24 @@ VIEWS.inventory = {
       html += items.length ? '<div class="table-wrap"><table><thead><tr><th>Item</th><th>Category</th><th class="right">In store</th><th class="right">Reorder at</th>' + (mgr ? '<th class="right">Unit cost</th>' : '') + (sale ? '<th class="right">Selling price</th>' : '') + '<th></th></tr></thead><tbody>' + items.map(function (i) {
         var low = Number(i.qty) <= Number(i.reorderLevel || 0);
         return '<tr' + (mgr ? ' class="clickable" onclick="openItem(\'' + i.id + '\')"' : '') + '><td><strong>' + esc(i.name) + '</strong></td><td>' + esc(ITEM_CATS[i.category] || '') + '</td><td class="right strong">' + i.qty + ' ' + esc(i.unit || '') + '</td><td class="right">' + (i.reorderLevel || 0) + '</td>' + (mgr ? '<td class="right money">' + money(i.unitCost) + '</td>' : '') + (sale ? '<td class="right money">' + money(i.sellPrice) + '</td>' : '') + '<td>' + (low ? pill('Reorder', 'st-bad') : pill('OK', 'st-ready')) + (sale && Number(i.qty) > 0 ? ' <button class="btn small" type="button" onclick="event.stopPropagation();openSell(\'' + i.id + '\')">Record sale</button>' : '') + '</td></tr>';
-      }).join('') + '</tbody></table></div>' : '<div class="card empty">' + (sale ? 'Nothing for sale yet. Add drinks, snacks, toiletries… with a selling price.' : 'No supplies yet.') + '</div>';
+      }).join('') + '</tbody></table></div>' : (sale ? emptyState('tag', 'Nothing for sale yet', 'Add drinks, snacks and toiletries with a selling price.', mgr ? 'Add item for sale' : '', "openItem('','sale')") : emptyState('inventory', 'No supplies yet', 'Add what the store holds: water, toiletries, cleaning supplies.', mgr ? 'Add supply' : '', "openItem('','supply')"));
     }
     if (tab === 'sales') {
       html += sales.length ? '<div class="table-wrap"><table><thead><tr><th>When</th><th>Item</th><th class="right">Qty</th><th class="right">Total</th><th>Buyer</th><th>Paid</th><th>By</th></tr></thead><tbody>' + sales.slice(0, 200).map(function (m) {
         return '<tr><td>' + fmtDT(m.at) + '</td><td>' + esc(m.itemName) + '</td><td class="right">' + (-m.qty) + '</td><td class="right money">' + money(m.total) + '</td><td>' + esc(m.roomNo ? 'Room ' + m.roomNo + (m.guestName ? ' · ' + m.guestName : '') : (m.to || 'Walk-in')) + '</td><td>' + (m.onBill ? pill('On room bill', 'st-alert') : pill(PAY_LABEL[m.method] || 'Paid', 'st-ready')) + '</td><td>' + esc(m.byName || '') + '</td></tr>';
-      }).join('') + '</tbody></table></div>' : '<div class="card empty">No sales yet.</div>';
+      }).join('') + '</tbody></table></div>' : emptyState('tag', 'No sales yet', 'Drinks and snacks sold to guests show up here.', 'Record sale', 'openSell()');
     }
     if (tab === 'usage') {
       html += '<div class="note">How much of each supply leaves the store per guest night over the last 30 days. If a number jumps without more guests, ask why.</div>';
       var rows = sup.map(function (i) { var q = -sum(issued.filter(function (m) { return m.itemId === i.id; }), function (m) { return m.qty; }); return { i: i, q: q, per: nights ? q / nights : 0 }; }).filter(function (r) { return r.q > 0; });
       var max = Math.max.apply(null, rows.map(function (r) { return r.per; }).concat([0.0001]));
-      html += rows.length ? '<div class="card"><div class="bars">' + sortBy(rows, function (r) { return r.per; }, true).map(function (r) { return '<div class="bar-row"><span>' + esc(r.i.name) + '</span><span class="bar-track"><span style="width:' + Math.round(r.per / max * 100) + '%"></span></span><span class="right">' + r.per.toFixed(2) + ' / night</span></div>'; }).join('') + '</div><div class="muted small" style="margin-top:10px">' + nights + ' guest nights in the period.</div></div>' : '<div class="card empty">No supplies issued in the last 30 days.</div>';
+      html += rows.length ? '<div class="card"><div class="bars">' + sortBy(rows, function (r) { return r.per; }, true).map(function (r) { return '<div class="bar-row"><span>' + esc(r.i.name) + '</span><span class="bar-track"><span style="width:' + Math.round(r.per / max * 100) + '%"></span></span><span class="right">' + r.per.toFixed(2) + ' / night</span></div>'; }).join('') + '</div><div class="muted small mt-2">' + nights + ' guest nights in the period.</div></div>' : emptyState('inventory', 'No supplies issued in the last 30 days', 'Supplies issued to rooms or staff are counted here per guest night.');
     }
     if (tab === 'moves') {
       html += S.data.moves.length ? '<div class="table-wrap"><table><thead><tr><th>When</th><th>Item</th><th>Type</th><th class="right">Qty</th><th>Room / to</th><th>By</th></tr></thead><tbody>' + S.data.moves.slice(0, 200).map(function (m) {
         var t = MOVE_TYPE[m.type] || ['', ''];
         return '<tr><td>' + fmtDT(m.at) + '</td><td>' + esc(m.itemName) + '</td><td>' + pill(t[0], t[1]) + '</td><td class="right strong">' + (m.qty > 0 ? '+' : '') + m.qty + '</td><td>' + esc(m.roomNo ? 'Room ' + m.roomNo : (m.to || m.supplier || m.note || '')) + '</td><td>' + esc(m.byName || '') + '</td></tr>';
-      }).join('') + '</tbody></table></div>' : '<div class="card empty">No movements yet.</div>';
+      }).join('') + '</tbody></table></div>' : emptyState('inventory', 'No stock movements yet', 'Every delivery, issue, sale and count is listed here.');
     }
     if (tab === 'rooms') {
       html += '<div class="note">These are the fixed items that must be in each room. Front desk counts them at every check-out. ' + (isAdmin() ? 'Edit them in Admin settings → Rooms.' : 'The owner edits them in Admin settings.') + '</div>';
@@ -484,18 +494,18 @@ function openSell(itemId) {
 }
 function slCalc(itemChanged) {
   var it = byId(S.data.items, val('sl-item')); if (!it) return;
-  if (itemChanged || !val('sl-price')) $('sl-price').value = it.sellPrice || 0;
+  if (itemChanged || !val('sl-price')) setMoney('sl-price', it.sellPrice || 0);
   $('sl-total').textContent = money(num(val('sl-qty')) * num(val('sl-price')));
   var guest = val('sl-buyer'); $('sl-bill-opt').classList.toggle('hidden', !guest);
   if (!guest && radio('sl-pay') === 'bill') document.querySelector('input[name="sl-pay"][value="pos"]').checked = true;
   $('sl-ref-wrap').classList.toggle('hidden', ['transfer', 'pos'].indexOf(radio('sl-pay')) < 0);
 }
-function saveSell() {
+async function saveSell() {
   var it = byId(S.data.items, val('sl-item')), q = Math.max(1, num(val('sl-qty'))), price = num(val('sl-price')), total = q * price, pay = radio('sl-pay'), stay = findStay(val('sl-buyer'));
   if (q > it.qty) return toast('Only ' + it.qty + ' in stock', true);
   if (pay === 'bill' && !stay) return toast('Pick the guest whose bill it goes on', true);
   if (pay !== 'bill' && !val('sl-ref')) return toast('Enter the reference from the POS slip', true);
-  if (pay !== 'bill' && !refOk(val('sl-ref'), stay ? stay.id : '')) return;
+  if (pay !== 'bill' && !(await refOk(val('sl-ref'), stay ? stay.id : ''))) return;
   if (pay !== 'bill') rememberPayMethod(pay);
   var b = db.batch(), mv = { itemId: it.id, itemName: it.name, type: 'sale', qty: -q, price: price, total: total, unitCost: it.unitCost || 0, roomNo: stay ? stay.roomNo : '', stayId: stay ? stay.id : '', guestName: stay ? stay.guestName : '', onBill: pay === 'bill', method: pay === 'bill' ? '' : pay };
   b.update(db.collection('items').doc(it.id), { qty: FV.increment(-q) });
@@ -505,7 +515,13 @@ function saveSell() {
   audit('item_sold', 'item', it.id, it.name + ' × ' + q + ' · ' + money(total) + (stay ? ' · Room ' + stay.roomNo : '') + (pay === 'bill' ? ' · on room bill' : ''), b);
   b.commit().catch(fail);
   closeModal(); toast('Sold: ' + it.name + ' × ' + q + (pay === 'bill' ? ' (added to the room bill)' : ''));
-}function archiveItem(id) { if (!confirm('Archive this item? It will be hidden from lists.')) return; db.collection('items').doc(id).update({ archived: true }).catch(fail); closeModal(); }
+}
+async function archiveItem(id) {
+  var it = byId(S.data.items, id);
+  if (!(await ask({ title: 'Archive ' + (it ? it.name : 'this item') + '?', text: 'It is hidden from lists and counts. Its history is kept.', ok: 'Archive', danger: true }))) return;
+  db.collection('items').doc(id).update({ archived: true }).catch(fail); closeModal();
+  toast((it ? it.name : 'Item') + ' archived', false, { label: 'Undo', fn: function () { db.collection('items').doc(id).update({ archived: false }).catch(fail); toast('Item is back'); } });
+}
 function openReceive() {
   S.form = { recPhotos: [] };
   var b = '<form class="form" onsubmit="event.preventDefault();saveReceive()"><div class="fields">' +
@@ -516,10 +532,10 @@ function openReceive() {
     '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Receive</button></div></form>';
   openModal('Receive stock', b); rcCalc();
 }
-function rcCalc() { var it = byId(S.data.items, val('rc-item')); if (it && !val('rc-cost') && document.activeElement !== $('rc-cost')) $('rc-cost').value = it.unitCost || ''; var t = num(val('rc-qty')) * num(val('rc-cost')); $('rc-total').textContent = money(t) + (needsApproval(t) ? ' · needs owner approval' : ''); }
-function saveReceive() {
+function rcCalc() { var it = byId(S.data.items, val('rc-item')); if (it && !val('rc-cost') && document.activeElement !== $('rc-cost')) setMoney('rc-cost', it.unitCost); var t = num(val('rc-qty')) * num(val('rc-cost')); $('rc-total').textContent = money(t) + (needsApproval(t) ? ' · needs owner approval' : ''); }
+async function saveReceive() {
   var it = byId(S.data.items, val('rc-item')), q = num(val('rc-qty')), c = num(val('rc-cost')), total = q * c, b = db.batch();
-  if (total > 0 && !S.form.recPhotos.length && !confirm('No receipt photo. Continue anyway?')) return;
+  if (total > 0 && !S.form.recPhotos.length && !(await ask({ title: 'No receipt photo', text: 'This delivery cost ' + money(total) + '. A photo of the invoice proves it.', ok: 'Save without receipt', cancel: 'Add the receipt' }))) return;
   b.update(db.collection('items').doc(it.id), { qty: FV.increment(q), unitCost: c || it.unitCost || 0 });
   b.set(db.collection('moves').doc(), Object.assign({ itemId: it.id, itemName: it.name, type: 'purchase', qty: q, unitCost: c, supplier: val('rc-sup'), photos: S.form.recPhotos }, stamp()));
   if (val('rc-exp') && total > 0) b.set(db.collection('expenses').doc(), Object.assign({ category: 'supplies', amount: total, description: it.name + ' × ' + q + (val('rc-sup') ? ' from ' + val('rc-sup') : ''), photos: S.form.recPhotos, status: needsApproval(total) ? 'pending' : 'approved' }, stamp()));
@@ -574,12 +590,12 @@ VIEWS.expenses = {
     var cats = {}; ok.forEach(function (e) { cats[e.category] = (cats[e.category] || 0) + e.amount; });
     var max = Math.max.apply(null, Object.keys(cats).map(function (k) { return cats[k]; }).concat([1]));
     var diesel = ok.filter(function (e) { return e.category === 'diesel'; });
-    var html = '<div class="row"><label class="field" style="flex-direction:row;align-items:center">Month <input type="month" value="' + month + '" onchange="S.params.month=this.value;render()" style="width:auto"></label></div>' +
+    var html = '<div class="row"><label class="field field-inline">Month <input type="month" value="' + month + '" onchange="S.params.month=this.value;render()" class="w-auto"></label></div>' +
       '<section class="grid-stats">' + stat('Total spent', money(sum(ok, function (e) { return e.amount; })), list.length + ' records') + stat('Waiting approval', pendingExpenses().length, 'Above ' + money(S.settings.approvalLimit), pendingExpenses().length ? 'warn' : '') + stat('Diesel', money(sum(diesel, function (e) { return e.amount; })), sum(diesel, function (e) { return e.litres; }) + ' litres') + '</section>';
     if (Object.keys(cats).length) html += '<div class="card"><h2>By category</h2><div class="bars">' + Object.keys(cats).sort(function (a, b) { return cats[b] - cats[a]; }).map(function (k) { return '<div class="bar-row"><span>' + esc(EXPENSE_CATS[k] || k) + '</span><span class="bar-track"><span style="width:' + Math.round(cats[k] / max * 100) + '%"></span></span><span class="right money">' + money(cats[k]) + '</span></div>'; }).join('') + '</div></div>';
     html += list.length ? '<div class="table-wrap"><table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th class="right">Amount</th><th>Status</th><th>By</th></tr></thead><tbody>' + list.map(function (e) {
       return '<tr class="clickable" onclick="openExpense(\'' + e.id + '\')"><td>' + fmtDate(e.at) + '</td><td>' + esc(EXPENSE_CATS[e.category] || e.category) + '</td><td>' + esc(e.description || '') + (e.litres ? ' · ' + e.litres + ' L' : '') + '</td><td class="right money">' + money(e.amount) + '</td><td>' + expPill(e) + '</td><td>' + esc(e.byName || '') + '</td></tr>';
-    }).join('') + '</tbody></table></div>' : '<div class="card empty">No expenses this month.</div>';
+    }).join('') + '</tbody></table></div>' : emptyState('expenses', 'No expenses this month', 'Diesel, repairs, salaries and supplies: record each one with its receipt.', 'Add expense', 'openExpenseForm()');
     return html;
   }
 };
@@ -590,15 +606,15 @@ function openExpenseForm() {
     field('Category', '<select id="ex-cat" onchange="$(\'ex-diesel\').classList.toggle(\'hidden\',this.value!==\'diesel\')">' + objOpts(EXPENSE_CATS, 'diesel') + '</select>') +
     field('Amount (₦)', input('ex-amt', '', 'inputmode="numeric" required')) + field('Description', input('ex-desc', '', 'required'), 'full') +
     field('Paid to', input('ex-to', '', '')) + field('Location / room', '<select id="ex-loc"><option value="">General</option>' + opts(locations(), '') + '</select>') +
-    '<div class="fields full" id="ex-diesel" style="grid-column:1/-1">' + field('Litres', input('ex-l', '', 'type="number" min="0"')) + field('Generator hour meter', input('ex-h', '', 'type="number" min="0"'), '', 'Reading on the generator when fuel was added') + '</div>' +
+    '<div class="fields full" id="ex-diesel" class="span-all">' + field('Litres', input('ex-l', '', 'type="number" min="0"')) + field('Generator hour meter', input('ex-h', '', 'type="number" min="0"'), '', 'Reading on the generator when fuel was added') + '</div>' +
     photoField('expPhotos', 'Receipt') + '</div>' +
     '<div class="note">Expenses above ' + money(S.settings.approvalLimit) + ' wait for owner approval.</div>' +
     '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Save expense</button></div></form>';
   openModal('Add expense', b);
 }
-function saveExpense() {
+async function saveExpense() {
   var amt = num(val('ex-amt')), cat = val('ex-cat');
-  if (!S.form.expPhotos.length && !confirm('No receipt photo. Save anyway?')) return;
+  if (!S.form.expPhotos.length && !(await ask({ title: 'No receipt photo', text: 'Expenses without a receipt are harder to check.', ok: 'Save without receipt', cancel: 'Add the receipt' }))) return;
   var d = Object.assign({ category: cat, amount: amt, description: val('ex-desc'), paidTo: val('ex-to'), location: val('ex-loc'), photos: S.form.expPhotos, status: needsApproval(amt) && !isAdmin() ? 'pending' : 'approved' }, stamp());
   if (cat === 'diesel') { d.litres = num(val('ex-l')); d.genHours = num(val('ex-h')); }
   var ref = db.collection('expenses').doc(); ref.set(d).catch(fail);
@@ -615,8 +631,8 @@ function openExpense(id) {
   if (isAdmin()) b += '<div class="row">' + (e.status === 'pending' ? '<button class="btn primary" type="button" onclick="decideExpense(\'' + id + '\',\'approved\')">Approve</button><button class="btn danger" type="button" onclick="decideExpense(\'' + id + '\',\'rejected\')">Reject</button>' : '') + (e.status !== 'void' ? '<button class="btn" type="button" onclick="decideExpense(\'' + id + '\',\'void\')">Void record</button>' : '') + '</div>';
   openModal('Expense', b);
 }
-function decideExpense(id, status) {
-  var note = status === 'approved' ? '' : prompt(status === 'void' ? 'Reason for voiding?' : 'Reason for rejecting?'); if (status !== 'approved' && !note) return;
+async function decideExpense(id, status) {
+  var note = status === 'approved' ? '' : await askText({ title: status === 'void' ? 'Void this expense?' : 'Reject this expense?', label: 'Reason', ok: status === 'void' ? 'Void' : 'Reject', danger: true }); if (status !== 'approved' && !note) return;
   db.collection('expenses').doc(id).update({ status: status, decisionNote: note || '', decidedBy: S.user.uid, decidedAt: Date.now() }).catch(fail);
   audit('expense_' + status, 'expense', id, note || ''); closeModal(); toast('Expense ' + status);
 }
@@ -635,7 +651,7 @@ function laundryView() {
     stat('Missing this month', shortQty, 'Pieces not returned', shortQty ? 'warn' : '') + '</section>';
   html += '<div class="card"><h2>At the laundry</h2>' + (out.length ? out.map(function (l) {
     return '<div class="list-row"><span class="main-t"><strong>' + esc(l.vendor || 'Laundry') + ' · sent ' + fmtDT(l.sentAt) + '</strong><span>' + esc((l.items || []).map(function (it) { return it.qty + ' ' + it.name; }).join(', ')) + ' · by ' + esc(l.sentByName || '') + '</span></span><button class="btn small primary" type="button" onclick="openLaundryReturn(\'' + l.id + '\')">Count it back in</button></div>';
-  }).join('') : '<div class="muted">Nothing out right now.</div>') + '</div>';
+  }).join('') : emptyState('shirt', 'Nothing at the laundry', '', 'Send laundry', 'openLaundrySend()', true)) + '</div>';
   html += '<div class="card"><h2>Returned</h2>' + (done.length ? done.slice(0, 30).map(function (l) {
     var sh = l.short || [];
     return '<div class="list-row"><span class="main-t"><strong>' + esc(l.vendor || 'Laundry') + ' · back ' + fmtDT(l.returnedAt) + '</strong><span>' + esc((l.items || []).map(function (it) { return it.qty + ' ' + it.name; }).join(', ')) + (l.cost ? ' · ' + money(l.cost) : '') + '</span></span>' + (sh.length ? pill(sh.map(function (x) { return x.qty + ' ' + x.name; }).join(', ') + ' missing', 'st-bad') : pill('All back', 'st-ready')) + '</div>';
@@ -647,7 +663,7 @@ function openLaundrySend() {
   var b = '<form class="form" onsubmit="event.preventDefault();saveLaundrySend()"><div class="fields">' +
     field('Laundry / person', input('ln-vendor', vendors[0] ? vendors[0].name : '', 'list="ln-vendors" placeholder="e.g. Mama Tunde Laundry"') + '<datalist id="ln-vendors">' + S.data.vendors.map(function (v) { return '<option value="' + esc(v.name) + '">'; }).join('') + '</datalist>', 'full') +
     '</div><fieldset class="group"><legend>Count what is going out</legend>' +
-    linenTypes().map(function (n, i) { return '<div class="count-row" style="grid-template-columns:1fr 110px"><span>' + esc(n) + '</span><input id="ln-s' + i + '" type="number" min="0" value="0" aria-label="' + esc(n) + ' sent"></div>'; }).join('') +
+    linenTypes().map(function (n, i) { return '<div class="count-row two"><span>' + esc(n) + '</span><input id="ln-s' + i + '" type="number" min="0" value="0" aria-label="' + esc(n) + ' sent"></div>'; }).join('') +
     '</fieldset><div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Send</button></div></form>';
   openModal('Send laundry', b);
 }
@@ -668,10 +684,10 @@ function openLaundryReturn(id) {
     '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Save</button></div></form>';
   openModal('Laundry back from ' + (l.vendor || 'laundry'), b);
 }
-function saveLaundryReturn(id) {
+async function saveLaundryReturn(id) {
   var l = byId(S.data.laundry, id), returned = [], short = [], cost = num(val('ln-cost')), now = Date.now();
   (l.items || []).forEach(function (it, i) { var q = num(val('ln-r' + i)); returned.push({ name: it.name, qty: q }); if (q < it.qty) short.push({ name: it.name, qty: it.qty - q }); });
-  if (short.length && !confirm(short.map(function (x) { return x.qty + ' ' + x.name; }).join(', ') + ' missing. This will be reported to the owner. Continue?')) return;
+  if (short.length && !(await ask({ title: 'Pieces missing', text: short.map(function (x) { return x.qty + ' ' + x.name; }).join(', ') + ' did not come back. This is reported to the owner.', ok: 'Save and report', cancel: 'Count again' }))) return;
   var b = db.batch();
   b.update(db.collection('laundry').doc(id), { status: 'returned', returned: returned, short: short, cost: cost, returnedAt: now, receivedBy: S.user.uid, receivedByName: meName() });
   if (short.length) b.set(db.collection('incidents').doc(), Object.assign({ type: 'laundry_short', title: 'Laundry short: ' + short.map(function (x) { return x.qty + ' ' + x.name; }).join(', ') + ' (' + (l.vendor || 'laundry') + ')', resolved: false }, stamp()));

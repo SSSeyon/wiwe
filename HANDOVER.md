@@ -340,3 +340,36 @@ Do this once, after publishing the rules:
 ### Not done
 - No restore from a backup file, no automated tests, no separate test database, no App Check, no content security policy (the app uses inline handlers), and record times still come from the phone's clock.
 - The v3 rules and the three scripts were written without a way to run them here (no Node, no rules emulator). The app itself was tested against a local mock database only.
+
+## 23. v3.1.0: UI refresh
+
+### Foundations (js/core.js, styles.css "v3.1" section)
+- **Design tokens** on `:root`: spacing `--sp-1…6`, radius `--r-sm…xl`, text sizes `--fs-xs…2xl`, and room status colours `--t-ready`, `--t-occupied`, `--t-reserved`, `--t-dirty`, `--t-cleaning`, `--t-ooo`, `--t-attn` (with dark-mode values). Inline styles in the scripts became small classes (`mt-2`, `span-all`, `sub-h`…); only bar widths and the photo viewer window still use inline styles.
+- **Text size** no longer uses CSS `zoom`. Every text size in styles.css is in rem and Account → Text size sets the page font size (92% / 100% / 112%). `fitHome()` no longer divides by the zoom.
+- **In-app dialog** replaces every browser `confirm()` and `prompt()`: `ask({ title, text, ok, cancel, danger })` resolves true/false, `askText({ title, label, ok })` resolves the text or null. Each one names its buttons ("Save as part payment" / "Fix the amount"). The functions that use them are now `async`; `refOk()` is async too, so callers `await` it.
+- **Pop-ups** are centred cards on big screens and bottom sheets on phones. The body scrolls inside; the Save row (`.form-actions`) stays pinned at the bottom. Focus is kept inside the pop-up or dialog (Tab wraps), Esc closes, and focus goes back to the button that opened it.
+- **Toast** sits above the bottom bar, and at the top of the screen while a pop-up is open so it never covers a form. `toast(msg, bad, { label, fn })` adds an Undo button (7 seconds). Undo is offered for: archive item, remove room, delete room type, cancel job, resolve incident, clear a restored form draft.
+- **Money boxes**: any field whose label contains ₦ gets a ₦ prefix and thousands separators while typing (`moneyFields()`, run on every pop-up and page). `num()` ignores the commas. Use `setMoney(id, n)` or `prefillAmount()` to fill one from code.
+- **One main button per screen**: `onePrimary()` keeps the first filled button and turns the rest plain (a form's Save row and small list buttons are left alone).
+- **Records**: `recRow()` lays a record out as amount and guest / details / who and when, with status and buttons on the right. Used for payments and repair jobs.
+- **Empty states**: `emptyState(icon, title, text, button, js)` says what belongs in the list and offers the button to add it. **Loading**: `skeleton(lines, stats)` grey placeholders on Reports, the activity log and Recent activity.
+- **Card icons** are set explicitly in `CARD_ICONS` (by exact heading, or `data-icon` on the heading) instead of guessed from words.
+- **Header**: the floating theme / dark-mode corner is gone. Colour scheme, dark mode (with drawn sun and moon icons) and text size are in My account → Appearance.
+
+### Check-in on phones
+- `stepForm()` shows the check-in form one part at a time (Guest → Stay → Payment → Caution fee and key card) in a full-screen sheet, with a bar pinned at the bottom: "Collect now ₦…", Back, Next / Complete check-in. Next checks the current part's required fields. On big screens the form is unchanged.
+
+### Room board (js/building.js, rewritten)
+- Each tile shows the room number, the guest's first name and leaving day (or the reserved guest and arrival time, the cleaner's name, the repair reason, the status), and a red badge for Overstay / Due out / Owes. Tiles are bigger (back row 64×30, front 78×35 in the drawing) for easier tapping. The kitchen mark is a drawn pot, not an emoji.
+- The colour key is a set of filters: tap "Dirty 3" to dim every other room; tap again (or "Show all rooms") to clear. "Needs attention" filters to rooms with a badge. On phones the key is one row that scrolls sideways.
+- **Building / List** switch (remembered on the device as `wiwe_board_view`): the list shows every room floor by floor with its line, status, type and badges.
+- Colours, the focus ring and the calendar now use the theme tokens.
+
+### Other screens
+- Calendar: 7 days on phones (21 on big screens), today's column tinted, room column fixed with an edge.
+- Receipt: a branded page with the logo, receipt number, stay details, bill, payments and balance. Print prints only the receipt (`printReceipt()` sets `body.print-modal`). WhatsApp and Copy still send the plain-text version.
+- Reports: the six-month table is now a bar chart (income, spent) with an occupancy line, figures folded underneath. Export → "Print this report" prints the page with folded sections opened; the app bar, bottom bar and buttons are hidden in print.
+- Read-only details in pop-ups sit two per row on phones.
+
+### Not changed
+- Colour-only status (no per-status icons or patterns), as decided.

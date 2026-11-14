@@ -10,7 +10,7 @@
 /* ---------- gestures ---------- */
 (function () {
   var sx = 0, sy = 0, st = 0, swipeOk = false, pull = false, ptr = null;
-  function phone() { return window.innerWidth <= 860 && $('modal').classList.contains('hidden') && S.me; }
+  function phone() { return window.innerWidth <= 860 && $('modal').classList.contains('hidden') && !dialogOpen() && S.me; }
   // Don't steal swipes from things that scroll sideways themselves (calendar, wide tables) or from form fields
   function scrollsSideways(el) {
     for (; el && el !== document.body; el = el.parentElement) {
@@ -119,10 +119,12 @@ function restoreDraft() {
   form.insertBefore(n, form.firstChild);
 }
 function discardDraft(btn) {
-  clearDraft();
+  var key = draftKey(), kept = null;
+  try { kept = localStorage.getItem(key); } catch (e) {}
+  clearDraft(key);
   var form = btn.closest('form'); btn.closest('.draft-note').remove();
   if (form) { form.reset(); draftFields(form).forEach(function (el) { delete el.dataset.touched; el.dispatchEvent(new Event('input', { bubbles: true })); }); }
-  toast('Form cleared');
+  toast('Form cleared', false, kept ? { label: 'Undo', fn: function () { try { localStorage.setItem(key, kept); } catch (e) {} if (draftKey() === key) restoreDraft(); } } : null);
 }
 (function () {
   var t = null, submitted = '';

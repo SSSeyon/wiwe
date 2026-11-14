@@ -11,7 +11,7 @@ VIEWS.board = {
   },
   render: function () {
     var rooms = roomsSorted(), t = todayStr();
-    if (!rooms.length) return '<div class="card empty">No rooms yet. Add them in Admin settings.</div>';
+    if (!rooms.length) return emptyState('building', 'No rooms yet', 'Rooms are added in Admin settings → Rooms and rates.', isAdmin() ? 'Add rooms' : '', "go('admin',{tab:'rooms'})");
     var counts = {}; rooms.forEach(function (r) { var st = displayStatus(r); counts[st] = (counts[st] || 0) + 1; });
     var occ = counts.occupied || 0;
     var arrivals = S.data.stays.filter(function (s) { return s.status === 'reserved' && s.checkInDate <= t; });
@@ -36,7 +36,7 @@ function movesList(arr, dep) {
   var rows = dep.map(function (s) { return { n: s.guestName, r: s.roomNo, t: 'by ' + S.settings.checkOutTime, k: 'Departing', c: 'st-dirty', id: s.id }; })
     .concat(arr.map(function (s) { return { n: s.guestName, r: s.roomNo, t: s.arrivalTime || '', k: 'Arriving', c: 'st-reserved', id: s.id }; }))
     .concat(S.data.stays.filter(isOverstay).map(function (s) { return { n: s.guestName, r: s.roomNo, t: 'overdue', k: 'Overstay', c: 'st-bad', id: s.id }; }));
-  if (!rows.length) return '<div class="muted">No movements today.</div>';
+  if (!rows.length) return emptyState('calendar', 'No arrivals or departures today', '', '', '', true);
   return rows.map(function (m) { return '<div class="list-row clickable" onclick="openStay(\'' + m.id + '\')"><span class="main-t"><strong>' + esc(m.n) + '</strong><span>Room ' + esc(m.r) + ' · ' + esc(m.t) + '</span></span>' + pill(m.k, m.c) + '</div>'; }).join('');
 }
 
@@ -45,7 +45,7 @@ function openRoom(id) {
   var r = byId(S.data.rooms, id); if (!r) return;
   var st = displayStatus(r), s = stayOf(r), type = roomType(r), b = '';
   b += '<div class="row">' + pill(ROOM_STATUS[st].label, ROOM_STATUS[st].cls) + '<span class="muted">' + esc(type.name) + ' · ' + money(type.rate) + ' per night</span></div>' +
-    '<div class="row between"><span class="muted">Where: <strong style="color:var(--text)">' + esc(typeof roomWhere === 'function' ? roomWhere(r) : floorName(roomFloor(r))) + '</strong></span>' + (canSee('board') && S.view !== 'board' ? '<button class="btn small" type="button" onclick="closeModal();b3dFocus(\'' + r.id + '\')">Show on room board</button>' : '') + '</div>';
+    '<div class="row between"><span class="muted">Where: <strong class="ink">' + esc(typeof roomWhere === 'function' ? roomWhere(r) : floorName(roomFloor(r))) + '</strong></span>' + (canSee('board') && S.view !== 'board' ? '<button class="btn small" type="button" onclick="closeModal();b3dFocus(\'' + r.id + '\')">Show on room board</button>' : '') + '</div>';
   if (s) b += '<div class="card"><div class="row between"><div class="main-t"><strong>' + esc(s.guestName) + '</strong><div class="muted">' + fmtDate(s.checkInDate) + ' → ' + fmtDate(s.checkOutDate) + ' · ' + s.nights + ' night' + (s.nights > 1 ? 's' : '') + '</div></div><button class="btn small" type="button" onclick="openStay(\'' + s.id + '\')">Open stay</button></div></div>';
   var acts = [];
   if (has('manager', 'frontdesk')) {
@@ -67,9 +67,9 @@ function openRoom(id) {
   }
   b += '<div class="row">' + acts.join('') + '</div>';
   var hist = S.data.stays.filter(function (x) { return x.roomId === r.id && x.status === 'checked_out'; }).slice(0, 5);
-  if (hist.length) b += '<div><h3 style="font-size:15px;margin-bottom:6px">Recent stays</h3>' + hist.map(function (x) { return '<div class="list-row clickable" onclick="openStay(\'' + x.id + '\')"><span class="main-t"><strong>' + esc(x.guestName) + '</strong><span>' + fmtDate(x.checkInDate) + ' → ' + fmtDate(x.checkOutDate) + '</span></span><span class="money">' + money(x.total) + '</span></div>'; }).join('') + '</div>';
+  if (hist.length) b += '<div><h3 class="sub-h">Recent stays</h3>' + hist.map(function (x) { return '<div class="list-row clickable" onclick="openStay(\'' + x.id + '\')"><span class="main-t"><strong>' + esc(x.guestName) + '</strong><span>' + fmtDate(x.checkInDate) + ' → ' + fmtDate(x.checkOutDate) + '</span></span><span class="money">' + money(x.total) + '</span></div>'; }).join('') + '</div>';
   var jobs = S.data.jobs.filter(function (j) { return j.roomId === r.id; }).slice(0, 5);
-  if (jobs.length) b += '<div><h3 style="font-size:15px;margin-bottom:6px">Maintenance</h3>' + jobs.map(function (j) { return '<div class="list-row clickable" onclick="openJob(\'' + j.id + '\')"><span class="main-t"><strong>' + esc(j.title) + '</strong><span>' + fmtDate(j.createdAt) + '</span></span>' + jobPill(j) + '</div>'; }).join('') + '</div>';
+  if (jobs.length) b += '<div><h3 class="sub-h">Maintenance</h3>' + jobs.map(function (j) { return '<div class="list-row clickable" onclick="openJob(\'' + j.id + '\')"><span class="main-t"><strong>' + esc(j.title) + '</strong><span>' + fmtDate(j.createdAt) + '</span></span>' + jobPill(j) + '</div>'; }).join('') + '</div>';
   openModal('Room ' + r.number, b);
 }
 /* What this person should do next with this room, or null. fn is the onclick code. */
@@ -119,8 +119,8 @@ function saveSetStatus(id) {
     closeModal(); toast('Room ' + r.number + ' set to ' + ROOM_STATUS[st].label);
   }).catch(fail);
 }
-function backInService(id) {
-  if (!confirm('Put this room back in service? It will go to "Dirty" so it gets cleaned and inspected first.')) return;
+async function backInService(id, asked) {
+  if (!asked && !(await ask({ title: 'Back in service?', text: 'The room goes to Dirty, so it is cleaned and inspected before anyone is let in.', ok: 'Back in service' }))) return;
   var r = byId(S.data.rooms, id);
   db.collection('rooms').doc(id).update({ status: 'dirty', oooReason: '' }).then(function () { createTurnoverTask(r, null, 'Back in service after repair'); audit('room_back_in_service', 'room', id, r.number); closeModal(); toast('Room ' + r.number + ' back in service'); }).catch(fail);
 }
@@ -147,7 +147,7 @@ function openCheckIn(roomId, reservationId) {
     field('Vehicle plate (optional)', input('ci-car', rv ? rv.vehicle : '', 'autocapitalize="characters"')) +
     sourceField('ci-source', rv && rv.source) +
     photoField('idPhotos', 'Photo of ID' + (needId ? '' : ' (optional)')) +
-    '<div class="full" id="ci-lookup" style="grid-column:1/-1"></div></div></fieldset>' +
+    '<div class="full" id="ci-lookup" class="span-all"></div></div></fieldset>' +
     '<fieldset class="group"><legend>2 · Stay</legend><div class="fields">' +
     field('Room', '<select id="ci-room" onchange="ciCalc()">' + free.map(function (r) { return '<option value="' + r.id + '"' + (r.id === room.id ? ' selected' : '') + '>' + esc(r.number + ' · ' + roomType(r).name) + '</option>'; }).join('') + '</select>') +
     field('Nights', input('ci-nights', nights, 'type="number" min="1" required oninput="ciCalc()"')) +
@@ -167,9 +167,11 @@ function openCheckIn(roomId, reservationId) {
     (st.cautionEnabled ? field('Caution fee (₦, refundable)', input('ci-caution', st.cautionAmount || '', 'inputmode="numeric" oninput="ciCalc()"')) + field("Guest's bank account for refund", input('ci-cacct', '', ''), '', 'Bank, account number and name') : '') +
     field('Key card number issued', input('ci-card', '', 'required')) +
     '</div><label class="check"><input type="checkbox" id="ci-agree" required>Guest has read the house rules and agrees that missing or damaged items are paid for' + (st.cautionEnabled ? ' from the caution fee' : '') + '.</label></fieldset>' +
-    '<div class="card" id="ci-sum"></div>' +
-    '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn gold" id="ci-save">Complete check-in</button></div></form>';
+    '<div class="card step-final" id="ci-sum"></div>' +
+    '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary" id="ci-save">Complete check-in</button></div></form>';
   openModal(rv ? 'Check in ' + rv.guestName : 'Check in guest', b, true);
+  // On a phone: one part at a time, with the amount to collect always in view
+  if (window.innerWidth <= 700) stepForm($('modalBody').querySelector('form'), { finish: 'Complete check-in', amountLabel: 'Collect now' });
   ciCalc();
 }function guestLookup() {
   var ph = val('ci-phone').replace(/\D/g, ''); if (ph.length < 7) return;
@@ -198,11 +200,12 @@ function ciCalc() {
   $('ci-out').textContent = fmtDate(out) + ', ' + S.settings.checkOutTime;
   $('ci-rate').textContent = money(rate) + (isAdmin() ? '' : ' (set by admin)');
   prefillAmount('ci-amount', due);
+  var sb = $('sb-amt'); if (sb) sb.textContent = money(due);
   $('ci-sum').innerHTML = '<div class="row between"><span>Room ' + esc(r.number) + ' · ' + n + ' night' + (n > 1 ? 's' : '') + '</span><span class="money">' + money(rate * n) + '</span></div>' +
     (d ? '<div class="row between"><span>Discount</span><span class="money">-' + money(d) + '</span></div>' : '') +
     (prior ? '<div class="row between"><span>Deposit already paid</span><span class="money">-' + money(prior) + '</span></div>' : '') +
     (caution ? '<div class="row between"><span>Caution fee (refundable)</span><span class="money">' + money(caution) + '</span></div>' : '') +
-    '<div class="row between strong" style="font-size:17px;padding-top:6px"><span>Collect now</span><span class="money">' + money(due) + '</span></div>' +
+    '<div class="row between strong total-row"><span>Collect now</span><span class="money">' + money(due) + '</span></div>' +
     (clash ? '<div class="note bad">Room ' + esc(r.number) + ' is booked for ' + esc(clash.guestName) + ' from ' + fmtDate(clash.checkInDate) + '. Pick another room or fewer nights.</div>' : '') +
     (rate === 0 ? '<div class="note warn">This room type has no rate yet. The owner sets rates in Admin settings → Rooms.</div>' : '');
 }
@@ -223,11 +226,12 @@ async function saveCheckIn() {
   var owed = Math.max(0, total - prior), roomPaid = Math.min(amount, owed), cautionPaid = Math.min(caution, Math.max(0, amount - owed)), over = amount - roomPaid - cautionPaid;
   if (over > 0) return toast('That is ' + money(over) + ' more than the amount due. Check the amount.', true);
   // A wrong pre-filled amount must not slip through: anything short of the room price is confirmed as a part payment
-  if (amount < owed) { if (!confirm('Part payment?\n\nReceived ' + money(amount) + ' but ' + money(owed) + ' is due for the room.\n' + money(owed - amount) + ' will be recorded as still owed' + (caution ? ', and no caution fee is held' : '') + '.\n\nOK = save as part payment. Cancel = fix the amount.')) return; }
-  else if (caution && cautionPaid < caution && !confirm('The room is paid, but only ' + money(cautionPaid) + ' of the ' + money(caution) + ' caution fee was received. Continue anyway?')) return;
-  if (amount > 0 && !refOk(ref, S.form.rvId)) return;
+  if (amount < owed) { if (!(await ask({ title: 'Part payment?', text: 'Received ' + money(amount) + ' but ' + money(owed) + ' is due for the room.\n' + money(owed - amount) + ' will be recorded as still owed' + (caution ? ', and no caution fee is held' : '') + '.', ok: 'Save as part payment', cancel: 'Fix the amount' }))) return; }
+  else if (caution && cautionPaid < caution && !(await ask({ title: 'Caution fee short', text: 'The room is paid, but only ' + money(cautionPaid) + ' of the ' + money(caution) + ' caution fee was received.', ok: 'Check in anyway', cancel: 'Fix the amount' }))) return;
+  if (amount > 0 && !(await refOk(ref, S.form.rvId))) return;
   rememberPayMethod(method);
-  $('ci-save').disabled = true;
+  if ($('ci-save')) $('ci-save').disabled = true;
+  if ($('sb-next')) $('sb-next').disabled = true;
   var now = Date.now(), b = db.batch();
   var sref = S.form.rvId ? db.collection('stays').doc(S.form.rvId) : db.collection('stays').doc();
   var stay = {
@@ -281,14 +285,14 @@ function rvCalc() {
 }function overlaps(roomId, from, to, ignoreId) {
   return S.data.stays.find(function (s) { return s.id !== ignoreId && s.roomId === roomId && (s.status === 'reserved' || s.status === 'checked_in') && s.checkInDate < to && from < s.checkOutDate; });
 }
-function saveReservation() {
+async function saveReservation() {
   var r = byId(S.data.rooms, val('rv-room')), from = val('rv-date'), n = Math.max(1, num(val('rv-nights'))), to = addDays(from, n);
   if (from < todayStr()) return toast('Arrival date is in the past', true);
   var clash = overlaps(r.id, from, to);
   if (clash) return toast('Room ' + r.number + ' is taken by ' + clash.guestName + ' (' + fmtDate(clash.checkInDate) + ' → ' + fmtDate(clash.checkOutDate) + ')', true);
   var dep = num(val('rv-dep')), pref = val('rv-ref'), method = radio('rv-method');
   if (dep > 0 && !pref) return toast('Enter the reference for the deposit', true);
-  if (dep > 0 && !refOk(pref)) return;
+  if (dep > 0 && !(await refOk(pref))) return;
   var ref = db.collection('stays').doc(), b = db.batch(), name = val('rv-name');
   b.set(ref, Object.assign({ roomId: r.id, roomNo: r.number, roomTypeName: roomType(r).name, guestName: name, phone: val('rv-phone'), source: val('rv-source') || 'phone', checkInDate: from, checkOutDate: to, nights: n, arrivalTime: val('rv-time'), notes: val('rv-note'), deposit: dep, paid: dep, status: 'reserved', createdAt: Date.now() }, stamp()));
   if (dep > 0) b.set(db.collection('payments').doc(), Object.assign({ stayId: ref.id, roomNo: r.number, guestName: name, amount: dep, kind: 'deposit', method: method, sender: '', ref: pref, photos: S.form.payPhotos || [], status: 'confirmed' }, stamp()));
@@ -317,7 +321,7 @@ function openStay(id) {
   if (s.notes) b += '<div class="note">' + esc(s.notes) + '</div>';
   if (s.missing && s.missing.length) b += '<div class="note bad">Missing at check-out: ' + esc(s.missing.map(function (m) { return m.name + ' × ' + m.short; }).join(', ')) + (s.damageNote ? '. ' + esc(s.damageNote) : '') + '</div>';
   else if (s.damageNote) b += '<div class="note bad">' + esc(s.damageNote) + '</div>';
-  if (pays.length) b += '<div><h3 style="font-size:15px;margin-bottom:6px">Payments</h3>' + pays.map(paymentRow).join('') + '</div>';
+  if (pays.length) b += '<div><h3 class="sub-h">Payments</h3>' + pays.map(paymentRow).join('') + '</div>';
   var acts = [];
   if (s.status === 'reserved' && desk) {
     acts.push('<button class="btn primary" type="button" onclick="openCheckIn(\'' + s.roomId + '\',\'' + s.id + '\')">Check in</button>');
@@ -362,20 +366,45 @@ function receiptText(s) {
   L.push('', 'Issued ' + fmtDT(Date.now()) + ' by ' + meName());
   return L.join('\n');
 }
+/* The receipt as a printable page with the logo; the WhatsApp / copy version is receiptText() */
+function receiptHtml(s) {
+  var pays = sortBy(allPayments().filter(function (p) { return p.stayId === s.id && payCounts(p); }), function (p) { return p.at; });
+  var res = s.status === 'reserved', roomCost = (s.rate || 0) * (s.nights || 0);
+  var disc = s.discount && s.discountStatus !== 'rejected' ? s.discount : 0, bill = (s.total != null ? s.total : roomCost - disc) + (s.extras || 0);
+  var lines = '<tr><td>Room ' + esc(s.roomNo) + ' · ' + s.nights + ' night' + (s.nights > 1 ? 's' : '') + (s.rate ? ' × ' + money(s.rate) : '') + '</td><td class="r">' + money(roomCost) + '</td></tr>' +
+    (disc ? '<tr class="sub"><td>Discount</td><td class="r">−' + money(disc) + '</td></tr>' : '') +
+    (s.extras ? '<tr><td>Items added to the bill</td><td class="r">' + money(s.extras) + '</td></tr>' : '') +
+    '<tr class="tot"><td>' + (res ? 'Stay cost' : 'Total') + '</td><td class="r">' + money(bill) + '</td></tr>';
+  var paid = pays.length ? '<table><thead><tr><th>Payment</th><th class="r">Amount</th></tr></thead><tbody>' + pays.map(function (p) {
+    return '<tr><td>' + esc(fmtDate(p.at) + ' · ' + (PAY_KIND[p.kind] || p.kind)) + '<br><span class="rcpt-no">' + esc(dots([PAY_LABEL[p.method] || p.method, p.ref ? 'ref ' + p.ref : ''])) + '</span></td><td class="r">' + money(p.amount) + '</td></tr>';
+  }).join('') + '</tbody></table>' : '';
+  var bal = s.balance || 0, end = res ? (s.paid ? 'Deposit received: ' + money(s.paid) + '. The rest is paid at check-in.' : 'Payment is due at check-in.') : bal > 0 ? 'Balance owed: ' + money(bal) : bal < 0 ? 'In credit: ' + money(-bal) : 'Paid in full. Thank you.';
+  return '<div class="rcpt" id="rcpt"><div class="rcpt-head"><img src="img/logo.png" alt="' + esc(S.settings.businessName || 'Wiwe Apartments') + '"><span class="rcpt-title">' + (res ? 'Booking confirmation' : 'Receipt') + '</span><span class="rcpt-no">No. ' + esc(s.id.slice(-6).toUpperCase()) + ' · ' + esc(fmtDT(Date.now())) + '</span></div>' +
+    '<dl class="rcpt-meta"><dt>Guest</dt><dd>' + esc(s.guestName) + '</dd><dt>Room</dt><dd>' + esc(s.roomNo + (s.roomTypeName ? ' · ' + s.roomTypeName : '')) + '</dd>' +
+    '<dt>Arrival</dt><dd>' + esc(fmtDate(s.checkInDate)) + '</dd><dt>Departure</dt><dd>' + esc(fmtDate(s.checkOutDate) + ', by ' + S.settings.checkOutTime) + '</dd></dl>' +
+    '<table><tbody>' + lines + '</tbody></table>' + paid +
+    '<div class="rcpt-note"><strong>' + esc(end) + '</strong>' + (s.caution && s.cautionStatus === 'held' ? '<br>Refundable caution fee held: ' + money(s.caution) : '') + '</div>' +
+    '<div class="rcpt-foot">' + esc(S.settings.businessName || 'Wiwe Apartments') + ' · Sowhe, Badagry<br>Issued by ' + esc(meName()) + '</div></div>';
+}
 function openReceipt(id) {
   var s = findStay(id); if (!s) return;
   var text = receiptText(s), phone = String(s.phone || '').replace(/\D/g, '').replace(/^0/, '234');
   S.receipt = text.replace(/\*/g, '');
-  openModal('Receipt · ' + s.guestName, '<pre class="summary-pre receipt">' + esc(S.receipt) + '</pre>' +
+  openModal('Receipt · ' + s.guestName, receiptHtml(s) +
     '<div class="row no-print"><a class="btn primary" target="_blank" rel="noopener" href="https://wa.me/' + esc(phone) + '?text=' + encodeURIComponent(text) + '">Send on WhatsApp</a>' +
-    '<button class="btn" type="button" onclick="copyReceipt()">Copy</button><button class="btn" type="button" onclick="window.print()">Print</button>' +
+    '<button class="btn" type="button" onclick="printReceipt()">' + icon('printer', 16) + 'Print</button><button class="btn" type="button" onclick="copyReceipt()">Copy text</button>' +
     '<button class="btn" type="button" onclick="openStay(\'' + s.id + '\')">Back</button></div>');
 }
-function copyReceipt() { (navigator.clipboard ? navigator.clipboard.writeText(S.receipt || '') : Promise.reject()).then(function () { toast('Copied'); }).catch(function () { toast('Could not copy', true); }); }function info(label, value) { return '<div class="field">' + esc(label) + '<span class="static">' + esc(value == null || value === '' ? '—' : value) + '</span></div>'; }
-function endReservation(id, status) {
-  var s = findStay(id), dep = s.paid || 0;
-  if (!confirm((status === 'no_show' ? 'Mark ' : 'Cancel ') + s.guestName + "'s reservation" + (status === 'no_show' ? ' as a no-show?' : '?'))) return;
-  var refund = dep > 0 && confirm('A deposit of ' + money(dep) + ' was paid.\n\nOK = refund it (the owner approves the refund first).\nCancel = keep the deposit, no refund.');
+// Prints only the receipt, not the page behind it
+function printReceipt() {
+  document.body.classList.add('print-modal');
+  var done = function () { document.body.classList.remove('print-modal'); window.removeEventListener('afterprint', done); };
+  window.addEventListener('afterprint', done); window.print(); setTimeout(done, 1500);
+}function copyReceipt() { (navigator.clipboard ? navigator.clipboard.writeText(S.receipt || '') : Promise.reject()).then(function () { toast('Copied'); }).catch(function () { toast('Could not copy', true); }); }function info(label, value) { return '<div class="field">' + esc(label) + '<span class="static">' + esc(value == null || value === '' ? '—' : value) + '</span></div>'; }
+async function endReservation(id, status) {
+  var s = findStay(id), dep = s.paid || 0, ns = status === 'no_show';
+  if (!(await ask({ title: ns ? 'Mark as a no-show?' : 'Cancel the reservation?', text: s.guestName + ' · Room ' + s.roomNo + ' · ' + fmtDate(s.checkInDate) + '. The room becomes free for these dates.', ok: ns ? 'Mark no-show' : 'Cancel reservation', cancel: 'Keep it', danger: true }))) return;
+  var refund = dep > 0 && await ask({ title: 'Refund the deposit?', text: 'A deposit of ' + money(dep) + ' was paid. A refund waits for the owner to approve it.', ok: 'Refund ' + money(dep), cancel: 'Keep the deposit' });
   var b = db.batch();
   b.update(db.collection('stays').doc(id), { status: status, endedAt: Date.now(), endedBy: S.user.uid, depositRefund: refund ? dep : 0 });
   if (refund) b.set(db.collection('payments').doc(), Object.assign({ stayId: id, roomNo: s.roomNo, guestName: s.guestName, amount: -dep, kind: 'refund_deposit', method: 'transfer', ref: '', note: 'Deposit refund: reservation ' + (status === 'no_show' ? 'no-show' : 'cancelled'), status: 'unconfirmed' }, stamp()));
@@ -411,7 +440,7 @@ function exCalc() {
   prefillAmount('ex-amount', n * (s.rate || 0) + bal);
   $('ex-due').textContent = money(n * (s.rate || 0) + bal) + (bal > 0 ? ' (incl. ' + money(bal) + ' balance)' : '');
 }
-function saveExtend() {
+async function saveExtend() {
   var s = findStay(S.form.stayId), only = S.form.balanceOnly, method = radio('ex-method'), amount = num(val('ex-amount')), ref = val('ex-ref');
   if (amount > 0 && !ref) return toast('Enter the reference from the POS slip', true);
   if (only && amount <= 0) return toast('Enter the amount received', true);
@@ -424,8 +453,8 @@ function saveExtend() {
   }
   var due = Math.max(0, s.balance || 0) + extra;
   if (amount > due) return toast('That is more than the ' + money(due) + ' due. Check the amount.', true);
-  if (amount < due && !confirm('Part payment?\n\nReceived ' + money(amount) + ' but ' + money(due) + ' is due.\n' + money(due - amount) + ' will stay on the guest\'s balance.\n\nOK = save as part payment. Cancel = fix the amount.')) return;
-  if (amount > 0 && !refOk(ref, s.id)) return;
+  if (amount < due && !(await ask({ title: 'Part payment?', text: 'Received ' + money(amount) + ' but ' + money(due) + ' is due.\n' + money(due - amount) + ' will stay on the guest\'s balance.', ok: 'Save as part payment', cancel: 'Fix the amount' }))) return;
+  if (amount > 0 && !(await refOk(ref, s.id))) return;
   rememberPayMethod(method);
   // increments, not totals worked out on this phone, so two devices can never overwrite each other
   upd.paid = FV.increment(amount); upd.balance = FV.increment(extra - amount);
@@ -463,16 +492,16 @@ function openCheckOut(id) {
     '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Complete check-out</button></div></form>';
   openModal('Check out · Room ' + s.roomNo + ' · ' + s.guestName, b, true);
 }
-function saveCheckOut() {
+async function saveCheckOut() {
   var s = findStay(S.form.stayId), r = byId(S.data.rooms, s.roomId), items = roomType(r).items || [];
   var missing = [];
   items.forEach(function (it, i) { var f = num(val('co-i' + i)); if (f < it.qty) missing.push({ name: it.name, expected: it.qty, found: f, short: it.qty - f }); });
   var note = val('co-note'), ded = num(val('co-ded')), card = val('co-card'), bal = Math.max(0, s.balance || 0), caution = s.caution || 0;
   if (!caution && ded > 0 && !val('co-dref')) return toast('Enter the reference for the damage payment', true);
-  if (!caution && ded > 0 && !refOk(val('co-dref'), s.id)) return;
-  if ((missing.length || note) && !ded && !confirm('Items are missing or damaged but nothing is charged. Continue?')) return;
+  if (!caution && ded > 0 && !(await refOk(val('co-dref'), s.id))) return;
+  if ((missing.length || note) && !ded && !(await ask({ title: 'Nothing charged?', text: 'Items are missing or damaged, but no charge was entered. An incident is still reported to the owner.', ok: 'Check out without charging', cancel: 'Enter a charge' }))) return;
   var kept = Math.min(ded, caution), applied = caution && val('co-usecaution') ? Math.min(bal, caution - kept) : 0, left = bal - applied;
-  if (left > 0 && !confirm(s.guestName + ' still owes ' + money(left) + '.\n\nOK = check out anyway. The debt is listed under Stays → Owing until it is paid.\nCancel = go back and record the payment first.')) return;
+  if (left > 0 && !(await ask({ title: s.guestName + ' still owes ' + money(left), text: 'If they leave now, the debt is listed under Stays → Owing until it is paid.', ok: 'Check out owing', cancel: 'Record the payment first', danger: true }))) return;
   var now = Date.now(), b = db.batch();
   var upd = { status: 'checked_out', checkedOutAt: now, checkedOutBy: S.user.uid, checkedOutByName: meName(), missing: missing, damageNote: note, damagePhotos: S.form.damagePhotos, cardReturned: !!card, cautionDeductions: kept, cautionApplied: applied };
   if (applied > 0) { upd.paid = FV.increment(applied); upd.balance = FV.increment(-applied); }
@@ -521,7 +550,7 @@ VIEWS.stays = {
     if (tab === 'inhouse') list = sortBy(list, function (s) { return s.checkOutDate; });
     var html = staysTabs() +
       '<div class="row"><input class="search" id="stay-q" type="search" placeholder="Search name, phone or room" value="' + esc(S.params.q || '') + '" oninput="S.params.q=this.value;render()"></div>';
-    if (!list.length) return html + '<div class="card empty">Nothing here.</div>';
+    if (!list.length) return html + staysEmpty(tab, S.params.q);
     return html + '<div class="table-wrap"><table><thead><tr><th>Guest</th><th>Room</th><th>Dates</th><th>Nights</th><th class="right">Total</th><th>Status</th></tr></thead><tbody>' +
       list.slice(0, 200).map(function (s) {
         var ss = STAY_STATUS[s.status] || ['', ''];
@@ -545,19 +574,37 @@ function normRef(r) { return String(r || '').replace(/\s+/g, '').toLowerCase(); 
 // The same slip used for two payments is the classic trick. Two parts of one payment (room + caution) share a reference and are fine.
 function sameSlip(a, b) { return a.stayId === b.stayId && Math.abs((a.at || 0) - (b.at || 0)) < 120000; }
 function dupOf(p) { var r = normRef(p.ref); if (!r || p.status === 'void') return null; return allPayments().find(function (x) { return x.id !== p.id && x.status !== 'void' && normRef(x.ref) === r && !sameSlip(x, p); }) || null; }
-function refOk(ref, stayId) {
+async function refOk(ref, stayId) {
   var d = dupOf({ id: '', ref: ref, stayId: stayId || '', at: Date.now() });
-  return !d || confirm('Reference ' + ref + ' was already used:\n' + money(d.amount) + ' · Room ' + d.roomNo + ' · ' + d.guestName + ' · ' + fmtDT(d.at) + ' · ' + (d.byName || '') + '\n\nOne slip cannot pay twice. OK = save anyway (it will be flagged). Cancel = check the slip.');
+  return !d || await ask({ title: 'Reference already used', text: 'Reference ' + ref + ' was used for ' + money(d.amount) + ', Room ' + d.roomNo + ' (' + d.guestName + '), ' + fmtDT(d.at) + ' by ' + (d.byName || 'staff') + '.\nOne slip cannot pay twice.', ok: 'Save anyway (flagged)', cancel: 'Check the slip', danger: true });
+}
+function staysEmpty(tab, q) {
+  if (q) return emptyState('search', 'No stays match "' + q + '"', 'Search by guest name, phone number or room number.');
+  var desk = has('manager', 'frontdesk'), m = {
+    inhouse: ['stays', 'No guests in the house', 'Checked-in guests show here until they check out.', 'Check in guest', 'openCheckIn()'],
+    upcoming: ['calendar', 'No reservations', 'Bookings for later dates show here, with any deposit paid.', 'New reservation', 'openReservation()'],
+    owing: ['payments', 'Nobody owes money', 'Guests with an unpaid balance show here, whether they are still in the house or have left.'],
+    past: ['stays', 'No check-outs in the last 90 days', 'Older stays are kept in Reports and the backup.'],
+    other: ['stays', 'No cancellations or no-shows', '']
+  }[tab] || ['list', 'Nothing here', ''];
+  return emptyState(m[0], m[1], m[2], desk ? m[3] : '', m[4]);
 }
 function paymentRow(p) {
   var acts = '', dup = dupOf(p);
   if (isAdmin() && p.status === 'unconfirmed' && p.amount < 0) acts = '<button class="btn small primary" type="button" onclick="event.stopPropagation();decidePayment(\'' + p.id + '\',\'confirmed\')">Approve refund</button><button class="btn small danger" type="button" onclick="event.stopPropagation();decidePayment(\'' + p.id + '\',\'rejected\')">Refuse</button>';
   else if (isAdmin() && p.status !== 'void' && p.status !== 'rejected') acts = '<button class="btn small" type="button" onclick="event.stopPropagation();voidPayment(\'' + p.id + '\')">Void</button>';
-  return '<div class="list-row"><span class="main-t"><strong>' + money(p.amount) + ' · ' + esc(PAY_KIND[p.kind] || p.kind) + (p.roomNo ? ' · Room ' + esc(p.roomNo) : '') + (p.guestName ? ' · ' + esc(p.guestName) : '') + '</strong><span>' + esc(PAY_LABEL[p.method] || p.method || '') + (p.ref ? ' · ref ' + esc(p.ref) : '') + (p.note ? ' · ' + esc(p.note) : '') + ' · ' + esc(p.byName || '') + ', ' + fmtDT(p.at) + (p.voidReason ? ' · void: ' + esc(p.voidReason) : '') + '</span>' + (p.photos && p.photos.length ? '<span class="thumbs" style="margin-top:6px">' + thumbs(p.photos) + '</span>' : '') + '</span><span class="row">' + (dup ? pill('Same ref as Room ' + (dup.roomNo || '?'), 'st-bad') : '') + payPill(p) + acts + '</span></div>';
+  var st = payPill(p) + (dup ? pill('Same ref as Room ' + (dup.roomNo || '?'), 'st-bad') : '');
+  return recRow({
+    l1: '<span class="amt' + (p.amount < 0 ? ' neg' : '') + '">' + money(p.amount) + '</span>' + (p.guestName ? '<span class="who">' + esc(p.guestName) + '</span>' : ''),
+    l2: dots([PAY_KIND[p.kind] || p.kind, p.roomNo ? 'Room ' + p.roomNo : '', PAY_LABEL[p.method] || p.method, p.ref ? 'ref ' + p.ref : '']),
+    l3: dots([p.byName, fmtDT(p.at), p.note, p.voidReason ? 'void: ' + p.voidReason : '']),
+    extra: p.photos && p.photos.length ? '<span class="thumbs">' + thumbs(p.photos) + '</span>' : '',
+    side: (st ? '<span class="row">' + st + '</span>' : '') + (acts ? '<span class="row">' + acts + '</span>' : '')
+  });
 }
-function decidePayment(id, status) {
+async function decidePayment(id, status) {
   var p = findPayment(id); if (!p) return;
-  if (status === 'rejected' && !confirm('Refuse this ' + money(-p.amount) + ' refund for ' + p.guestName + '?')) return;
+  if (status === 'rejected' && !(await ask({ title: 'Refuse this refund?', text: money(-p.amount) + ' for ' + p.guestName + ' (' + (p.note || 'Room ' + p.roomNo) + '). The guest gets nothing back.', ok: 'Refuse refund', danger: true }))) return;
   var b = db.batch();
   b.update(db.collection('payments').doc(id), { status: status, decidedBy: S.user.uid, decidedAt: Date.now() });
   audit(status === 'confirmed' ? 'refund_approved' : 'refund_refused', 'payment', id, money(-p.amount) + ' · Room ' + p.roomNo + ' · ' + p.guestName, b);
@@ -565,9 +612,9 @@ function decidePayment(id, status) {
   toast(status === 'confirmed' ? 'Refund approved' : 'Refund refused');
 }
 // Voiding a payment gives the money back to the guest's balance, so the stay shows what is really owed
-function voidPayment(id) {
+async function voidPayment(id) {
   var p = findPayment(id); if (!p) return;
-  var reason = prompt('Reason for voiding this ' + money(p.amount) + ' record?'); if (!reason) return;
+  var reason = await askText({ title: 'Void ' + money(p.amount) + '?', text: (PAY_KIND[p.kind] || p.kind) + ' · ' + (p.guestName || '') + ' · ref ' + (p.ref || '—') + (p.stayId && p.amount > 0 && PAY_ON_STAY.indexOf(p.kind) >= 0 ? '\nThe amount goes back on the guest\'s balance.' : ''), label: 'Reason', ok: 'Void payment', danger: true }); if (!reason) return;
   var b = db.batch(), s = p.stayId ? findStay(p.stayId) : null, a = p.amount;
   b.update(db.collection('payments').doc(id), { status: 'void', voidReason: reason, decidedBy: S.user.uid, decidedAt: Date.now() });
   if (p.stayId && a > 0 && PAY_ON_STAY.indexOf(p.kind) >= 0) b.update(db.collection('stays').doc(p.stayId), s && s.status === 'reserved' ? { paid: FV.increment(-a), deposit: FV.increment(-a) } : { paid: FV.increment(-a), balance: FV.increment(a) });
@@ -593,7 +640,7 @@ VIEWS.payments = {
       tabs('payments', [['all', 'All'], ['refunds', 'Refunds' + (wait.length ? ' (' + wait.length + ' to approve)' : '')], ['dups', 'Same reference (' + dups.length + ')'], ['void', 'Void']]) +
       '<div class="row"><input class="search" id="pay-q" type="search" placeholder="Search reference, guest or room" value="' + esc(S.params.pq || '') + '" oninput="S.params.pq=this.value;render()"></div>' +
       (tab === 'dups' ? '<div class="note">These payments share a reference with another payment. One slip should pay once: check each pair against the POS report.</div>' : '');
-    if (!list.length) return html + '<div class="card empty">Nothing here.</div>';
+    if (!list.length) return html + (q ? emptyState('search', 'No payments match', 'Search by the reference on the slip, the guest\'s name or the room number.') : emptyState('payments', { refunds: 'No refunds', dups: 'No reference used twice', void: 'Nothing voided' }[tab] || 'No payments in the last 90 days', { refunds: 'Early check-out and deposit refunds show here. The owner approves each one.', dups: 'Good: every payment has its own slip reference.', void: 'Payments the owner voids show here with the reason.' }[tab] || 'Payments are recorded at check-in, extension, balance payment and sales.'));
     return html + '<div class="card">' + list.slice(0, 200).map(paymentRow).join('') + '</div>';
   }
 };
@@ -609,7 +656,8 @@ function openIncident(id) {
 function resolveIncident(id) {
   var note = val('inc-res'); if (!note) return toast('Write how it was resolved', true);
   db.collection('incidents').doc(id).update({ resolved: true, resolution: note, resolvedBy: S.user.uid, resolvedByName: meName(), resolvedAt: Date.now() }).catch(fail);
-  audit('incident_resolved', 'incident', id, note); closeModal(); toast('Resolved');
+  audit('incident_resolved', 'incident', id, note); closeModal();
+  toast('Resolved', false, { label: 'Undo', fn: function () { db.collection('incidents').doc(id).update({ resolved: false }).catch(fail); audit('incident_reopened', 'incident', id, ''); toast('Incident open again'); } });
 }
 function openUnexpectedUse(roomId) {
   var r = byId(S.data.rooms, roomId); S.form = { usePhotos: [] };
@@ -694,12 +742,12 @@ function staysTabs() {
 }
 // Rooms down the side, nights across the top. A stay fills the nights from check-in up to (not including) check-out.
 function stayCalendar() {
-  var start = S.params.calStart || todayStr(), days = 21, dates = [];
+  var start = S.params.calStart || todayStr(), days = window.innerWidth <= 640 ? 7 : 21, dates = [], today = todayStr();
   for (var i = 0; i < days; i++) dates.push(addDays(start, i));
   var end = addDays(start, days), stays = S.data.stays.filter(function (s) { return (s.status === 'reserved' || s.status === 'checked_in') && s.checkInDate < end && s.checkOutDate > start; });
   var html = '<div class="row between"><div class="row"><button class="btn small" type="button" onclick="S.params.calStart=addDays(\'' + start + '\',-7);render()">← Week</button><button class="btn small" type="button" onclick="S.params.calStart=null;render()">Today</button><button class="btn small" type="button" onclick="S.params.calStart=addDays(\'' + start + '\',7);render()">Week →</button></div>' +
-    '<div class="b3d-legend"><span><i style="background:#3A73D9"></i>In house</span><span><i style="background:#8B6BD6"></i>Reserved</span><span>Tap an empty night to reserve</span></div></div>';
-  html += '<div class="table-wrap cal-wrap"><table class="cal"><thead><tr><th class="cal-room">Room</th>' + dates.map(function (d) { var dt = parseDate(d), we = dt.getDay() === 0 || dt.getDay() === 6; return '<th class="' + (d === todayStr() ? 'cal-today' : we ? 'cal-we' : '') + '">' + DOW[dt.getDay()].slice(0, 2) + '<br>' + dt.getDate() + '</th>'; }).join('') + '</tr></thead><tbody>';
+    '<div class="cal-key"><span><i class="k-in"></i>In house</span><span><i class="k-res"></i>Reserved</span><span>Tap an empty night to reserve</span></div></div>';
+  html += '<div class="table-wrap cal-wrap"><table class="cal' + (days === 7 ? ' cal-7' : '') + '"><thead><tr><th class="cal-room">Room</th>' + dates.map(function (d) { var dt = parseDate(d), we = dt.getDay() === 0 || dt.getDay() === 6; return '<th class="' + (d === todayStr() ? 'cal-today' : we ? 'cal-we' : '') + '">' + DOW[dt.getDay()].slice(0, 2) + '<br>' + dt.getDate() + '</th>'; }).join('') + '</tr></thead><tbody>';
   roomsSorted().forEach(function (r) {
     html += '<tr><th class="cal-room">' + esc(r.number) + '</th>';
     for (var i = 0; i < days; i++) {
@@ -709,8 +757,8 @@ function stayCalendar() {
         var cls = s.status === 'checked_in' ? 'cal-in' : 'cal-res';
         html += '<td colspan="' + span + '" class="cal-stay ' + cls + '"><button type="button" onclick="openStay(\'' + s.id + '\')" title="' + esc(s.guestName + ' · ' + fmtDate(s.checkInDate) + ' → ' + fmtDate(s.checkOutDate)) + '">' + esc(s.guestName.split(' ')[0]) + '</button></td>';
         i += span - 1;
-      } else if (r.status === 'ooo' && d === todayStr()) html += '<td class="cal-ooo" title="Out of order">×</td>';
-      else html += '<td class="cal-free"><button type="button" aria-label="Reserve room ' + esc(r.number) + ' from ' + fmtDate(d) + '" onclick="openReservation(\'' + r.id + '\',\'' + d + '\')"></button></td>';
+      } else if (r.status === 'ooo' && d === today) html += '<td class="cal-ooo cal-tcol" title="Out of order">×</td>';
+      else html += '<td class="cal-free' + (d === today ? ' cal-tcol' : '') + '"><button type="button" aria-label="Reserve room ' + esc(r.number) + ' from ' + fmtDate(d) + '" onclick="openReservation(\'' + r.id + '\',\'' + d + '\')"></button></td>';
     }
     html += '</tr>';
   });

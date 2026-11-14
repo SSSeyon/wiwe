@@ -22,9 +22,9 @@ VIEWS.today = {
       stat('Guests owing', money(sum(owe, function (s) { return s.balance; })), owe.length + ' stay' + (owe.length === 1 ? '' : 's') + ' · ' + money(td.spent) + ' spent today', owe.length ? 'warn' : '') + '</section>';
     html += '<div class="split"><div class="wide"><div class="card"><h2>Leak watch and approvals</h2><div class="stack">' + alertList(al) + '</div></div>' +
       '<div class="card"><div class="card-head"><h2>Payments recorded today</h2><button class="btn small" type="button" onclick="go(\'payments\')">See all</button></div>' +
-      (td.list.length ? '<div class="note" style="margin-bottom:8px">Compare the POS figure with the end-of-day total on the terminal: ' + money(td.pos) + ' from ' + td.list.filter(function (x) { return x.method === 'pos'; }).length + ' slip(s).</div>' + td.list.map(paymentRow).join('') : '<div class="muted">Nothing recorded yet today.</div>') + '</div></div>' +
+      (td.list.length ? '<div class="note mb-2">Compare the POS figure with the end-of-day total on the terminal: ' + money(td.pos) + ' from ' + td.list.filter(function (x) { return x.method === 'pos'; }).length + ' slip(s).</div>' + td.list.map(paymentRow).join('') : emptyState('payments', 'No payments yet today', 'Each payment shows here as it is recorded.', '', '', true)) + '</div></div>' +
       '<div class="narrow">' + dailySummaryCard() +
-      '<div class="card"><div class="card-head"><h2>Recent activity</h2><button class="btn small" type="button" onclick="go(\'admin\',{tab:\'audit\'})">See all</button></div><div id="today-audit" class="muted">Loading…</div></div></div></div>';    setTimeout(loadRecentAudit, 0);
+      '<div class="card"><div class="card-head"><h2>Recent activity</h2><button class="btn small" type="button" onclick="go(\'admin\',{tab:\'audit\'})">See all</button></div><div id="today-audit">' + skeleton(3) + '</div></div></div></div>';    setTimeout(loadRecentAudit, 0);
     return html;
   }
 };
@@ -45,10 +45,10 @@ VIEWS.reports = {
     var month = S.params.month || todayStr().slice(0, 7);
     if (S.report && S.report.month === month) return reportHtml(S.report);
     if (S.reportLoading !== month) loadReport(month);
-    return monthPicker(month) + '<div class="card empty">Loading ' + esc(month) + '…</div>';
+    return monthPicker(month) + skeleton(0, 4) + '<div class="card">' + skeleton(6) + '</div>';
   }
 };
-function monthPicker(m) { return '<div class="row between"><label class="field" style="flex-direction:row;align-items:center">Month <input type="month" value="' + m + '" onchange="S.params.month=this.value;S.report=null;render()" style="width:auto"></label><div class="row"><button class="btn small" type="button" onclick="S.report=null;render()">Refresh</button>' + actionMenu('Export', [['Payments (CSV)', "exportCsv('payments')"], ['Expenses (CSV)', "exportCsv('expenses')"]]) + '</div></div>'; }
+function monthPicker(m) { return '<div class="row between"><label class="field field-inline">Month <input type="month" value="' + m + '" onchange="S.params.month=this.value;S.report=null;render()" class="w-auto"></label><div class="row"><button class="btn small" type="button" onclick="S.report=null;render()">Refresh</button>' + actionMenu('Export', [['Payments (CSV)', "exportCsv('payments')"], ['Expenses (CSV)', "exportCsv('expenses')"], ['Print this report', 'printPage()']]) + '</div></div>'; }
 async function loadReport(month) {
   var start = parseDate(month + '-01').getTime(), endD = parseDate(month + '-01'); endD.setMonth(endD.getMonth() + 1); var end = endD.getTime();
   var first = month + '-01', last = dateStr(new Date(end - 86400000)), days = daysBetween(first, last) + 1;
@@ -125,12 +125,35 @@ function reportHtml(R) {
 }
 /* Six months side by side. Read on request only, because it costs extra database reads. */
 function trendCard() {
-  if (!S.trend) return '<div class="card"><div class="card-head"><h2>Last 6 months</h2><button class="btn small" type="button"' + (S.trendLoading ? ' disabled' : '') + ' onclick="loadTrend()">' + (S.trendLoading ? 'Loading…' : 'Show') + '</button></div><div class="muted">Income, spending and occupancy month by month.</div></div>';
-  var max = Math.max.apply(null, S.trend.map(function (m) { return m.rev; }).concat([1]));
-  return '<div class="card"><div class="card-head"><h2>Last 6 months</h2><button class="btn small" type="button" onclick="S.trend=null;loadTrend()">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>Month</th><th>Income</th><th class="right">Income</th><th class="right">Spent</th><th class="right">Net</th><th class="right">Occupancy</th></tr></thead><tbody>' +
-    S.trend.map(function (m) { return '<tr><td><strong>' + esc(m.label) + '</strong></td><td style="min-width:90px"><span class="bar-track" style="display:block"><span style="display:block;width:' + Math.round(m.rev / max * 100) + '%"></span></span></td><td class="right money">' + money(m.rev) + '</td><td class="right money">' + money(m.spent) + '</td><td class="right money">' + money(m.rev - m.spent) + '</td><td class="right">' + Math.round(m.occ * 100) + '%</td></tr>'; }).join('') + '</tbody></table></div></div>';
+  if (!S.trend) return '<div class="card"><div class="card-head"><h2>Last 6 months</h2><button class="btn small no-print" type="button"' + (S.trendLoading ? ' disabled' : '') + ' onclick="loadTrend()">' + (S.trendLoading ? 'Loading…' : 'Show') + '</button></div>' + (S.trendLoading ? skeleton(4) : '<div class="muted">Income, spending and occupancy month by month.</div>') + '</div>';
+  return '<div class="card"><div class="card-head"><h2>Last 6 months</h2><button class="btn small no-print" type="button" onclick="S.trend=null;loadTrend()">Refresh</button></div>' +
+    '<div class="chart-key" aria-hidden="true"><span><i class="k-in"></i>Income</span><span><i class="k-out"></i>Spent</span><span><i class="k-occ"></i>Occupancy</span></div>' + trendChart(S.trend) +
+    '<details class="sum-fold mt-2"><summary class="muted">Show the figures</summary><div class="table-wrap mt-2"><table><thead><tr><th>Month</th><th class="right">Income</th><th class="right">Spent</th><th class="right">Net</th><th class="right">Occupancy</th></tr></thead><tbody>' +
+    S.trend.map(function (m) { return '<tr><td><strong>' + esc(m.label) + '</strong></td><td class="right money">' + money(m.rev) + '</td><td class="right money">' + money(m.spent) + '</td><td class="right money">' + money(m.rev - m.spent) + '</td><td class="right">' + Math.round(m.occ * 100) + '%</td></tr>'; }).join('') + '</tbody></table></div></details></div>';
 }
-async function loadTrend() {
+function shortMoney(v) { v = Math.round(v); return v >= 1e6 ? '₦' + (v / 1e6).toFixed(v >= 1e7 ? 0 : 1).replace(/\.0$/, '') + 'm' : v >= 1e3 ? '₦' + Math.round(v / 1e3) + 'k' : '₦' + v; }
+/* Bars for income and spending, a line for occupancy (right-hand scale) */
+function trendChart(rows) {
+  var W = 640, H = 240, L = 54, R = 42, T = 14, B = 30, cw = (W - L - R) / rows.length;
+  var max = Math.max.apply(null, rows.map(function (m) { return Math.max(m.rev, m.spent); }).concat([1]));
+  var step = Math.pow(10, Math.floor(Math.log(max) / Math.LN10)), top = Math.ceil(max / step) * step;
+  var y = function (v) { return T + (H - T - B) * (1 - v / top); }, pts = [];
+  var s = '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Income, spending and occupancy for the last six months">';
+  for (var g = 0; g <= 4; g++) { var v = top * g / 4, yy = y(v); s += '<line class="c-grid" x1="' + L + '" x2="' + (W - R) + '" y1="' + yy + '" y2="' + yy + '"/><text x="' + (L - 6) + '" y="' + (yy + 4) + '" text-anchor="end">' + shortMoney(v) + '</text>'; }
+  [0, 50, 100].forEach(function (p) { s += '<text x="' + (W - R + 6) + '" y="' + (y(top * p / 100) + 4) + '">' + p + '%</text>'; });
+  rows.forEach(function (m, i) {
+    var cx = L + i * cw + cw / 2, bw = Math.min(24, cw / 3.4);
+    s += '<rect class="c-in" x="' + (cx - bw - 2) + '" y="' + y(m.rev) + '" width="' + bw + '" height="' + Math.max(0, y(0) - y(m.rev)) + '" rx="3"><title>' + esc(m.label) + ': income ' + money(m.rev) + '</title></rect>';
+    s += '<rect class="c-out" x="' + (cx + 2) + '" y="' + y(m.spent) + '" width="' + bw + '" height="' + Math.max(0, y(0) - y(m.spent)) + '" rx="3"><title>' + esc(m.label) + ': spent ' + money(m.spent) + '</title></rect>';
+    s += '<text x="' + cx + '" y="' + (H - 10) + '" text-anchor="middle">' + esc(m.label.split(' ')[0]) + '</text>';
+    pts.push([cx, y(top * Math.min(1, m.occ || 0)), m]);
+  });
+  s += '<polyline class="c-occ" points="' + pts.map(function (p) { return p[0] + ',' + p[1]; }).join(' ') + '"/>';
+  pts.forEach(function (p) { s += '<circle class="c-dot" cx="' + p[0] + '" cy="' + p[1] + '" r="4"><title>' + esc(p[2].label) + ': ' + Math.round(p[2].occ * 100) + '% occupied</title></circle>'; });
+  return s + '</svg>';
+}
+// Print the page as it is, with folded sections opened
+function printPage() { document.querySelectorAll('#view details').forEach(function (d) { d.open = true; }); window.print(); }async function loadTrend() {
   if (S.trendLoading) return;
   S.trendLoading = true; render();
   var end = parseDate(todayStr().slice(0, 7) + '-01'); end.setMonth(end.getMonth() + 1);
@@ -173,7 +196,7 @@ VIEWS.admin = {
   title: 'Admin settings',
   actions: function () { return adminLocked() ? '' : '<button class="btn" type="button" onclick="S.adminUntil=0;render()">Lock</button>'; },
   render: function () {
-    if (!isAdmin()) return '<div class="card empty">Only the owner can open admin settings.</div>';
+    if (!isAdmin()) return emptyState('admin', 'Only the owner can open admin settings', 'Ask the owner if something needs changing.');
     if (adminLocked()) return pinScreen();
     S.adminUntil = Date.now() + 10 * 60000;
     var tab = curTab('admin', 'general');
@@ -182,7 +205,7 @@ VIEWS.admin = {
     if (tab === 'rooms') html += adminRooms();
     if (tab === 'staff') html += adminStaff();
     if (tab === 'security') html += adminSecurity();
-    if (tab === 'audit') { html += '<div class="card" id="audit-box"><div class="muted">Loading…</div></div>'; setTimeout(loadAudit, 0); }
+    if (tab === 'audit') { html += '<div class="card" id="audit-box">' + skeleton(8) + '</div>'; setTimeout(loadAudit, 0); }
     if (tab === 'data') html += '<div class="card"><h2>Backup</h2><p class="muted">Downloads everything (except photos) as one JSON file. Do this monthly and keep it safe.</p><button class="btn primary" type="button" onclick="backup()">Download backup</button></div>';
     return html;
   }
@@ -191,10 +214,10 @@ function pinScreen() {
   var lo = lockout(), locked = lo.until > Date.now();
   var dots = ''; for (var i = 0; i < 6; i++) dots += '<span class="' + (i < pinEntry.length ? 'on' : '') + '"></span>';
   var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'];
-  return '<div class="pin-screen"><div class="logo-mark">' + icon('admin', 20) + '</div><h2>Admin settings</h2><span style="color:var(--side-text);font-size:14px">' + (locked ? 'Too many wrong tries. Try again at ' + fmtTime(lo.until) + '.' : 'Enter your 6-digit admin code.') + '</span>' +
+  return '<div class="pin-screen"><div class="logo-mark">' + icon('admin', 20) + '</div><h2>Admin settings</h2><span class="pin-sub">' + (locked ? 'Too many wrong tries. Try again at ' + fmtTime(lo.until) + '.' : 'Enter your 6-digit admin code.') + '</span>' +
     '<div class="pin-dots" role="img" aria-label="' + pinEntry.length + ' of 6 digits entered">' + dots + '</div>' +
     '<div class="pad">' + keys.map(function (k) { return k === '' ? '<button type="button" class="blank" tabindex="-1" aria-hidden="true"></button>' : '<button type="button"' + (locked ? ' disabled' : '') + ' aria-label="' + (k === '⌫' ? 'Delete digit' : 'Digit ' + k) + '" onclick="pinKey(\'' + k + '\')">' + k + '</button>'; }).join('') + '</div>' +
-    '<span style="color:var(--side-dim);font-size:12px">Locks again after 10 minutes. 5 wrong tries locks it for an hour.</span></div>';
+    '<span class="pin-foot">Locks again after 10 minutes. 5 wrong tries locks it for an hour.</span></div>';
 }
 async function pinKey(k) {
   if (k === '⌫') pinEntry = pinEntry.slice(0, -1); else if (pinEntry.length < 6) pinEntry += k;
@@ -216,17 +239,17 @@ function adminGeneral() {
   var s = S.settings;
   return '<form class="form" onsubmit="event.preventDefault();saveGeneral()"><div class="note">Tap a section to open it. One Save button at the bottom saves all of them.</div>' +
     fold('g-money', 'Guests and money', '<div class="fields">' +
-    '<label class="check" style="grid-column:1/-1"><input type="checkbox" id="g-caution"' + (s.cautionEnabled ? ' checked' : '') + '>Collect a refundable caution fee at check-in</label>' +
+    '<label class="check span-all"><input type="checkbox" id="g-caution"' + (s.cautionEnabled ? ' checked' : '') + '>Collect a refundable caution fee at check-in</label>' +
     field('Caution fee (₦)', input('g-camt', s.cautionAmount, 'inputmode="numeric"')) +
     field('Check-in time', input('g-in', s.checkInTime, 'type="time"')) + field('Check-out time', input('g-out', s.checkOutTime, 'type="time"')) +
     field('Hold reservations for (hours)', input('g-hold', s.holdHours, 'type="number" min="0"'), '', 'After the expected arrival time') +
     field('Approval needed above (₦)', input('g-limit', s.approvalLimit, 'inputmode="numeric"'), '', 'Expenses and purchases above this wait for you') +
-    '<label class="check" style="grid-column:1/-1"><input type="checkbox" id="g-reqid"' + (s.requireId ? ' checked' : '') + '>Check-in needs an ID number or a photo of the ID</label>' +
+    '<label class="check span-all"><input type="checkbox" id="g-reqid"' + (s.requireId ? ' checked' : '') + '>Check-in needs an ID number or a photo of the ID</label>' +
     '</div>', true) +
     fold('g-places', 'Places', field('Common areas (one per line)', '<textarea id="g-areas">' + esc((s.commonAreas || []).join('\n')) + '</textarea>', '', 'Used for maintenance and assets, e.g. Generator house, Reception')) +
     fold('g-clean', 'Cleaning checklists', '<div class="fields">' + field('Turnover (after check-out)', '<textarea id="g-turn" rows="10">' + esc((s.turnoverSteps || []).join('\n')) + '</textarea>', '', 'One step per line. Steps with the word "kitchen" only show for kitchen rooms.') +
     field('Daily service (guest staying)', '<textarea id="g-daily" rows="10">' + esc((s.dailySteps || []).join('\n')) + '</textarea>') +
-    '<label class="check" style="grid-column:1/-1"><input type="checkbox" id="g-dailyon"' + (s.dailyCleaning !== false ? ' checked' : '') + '>Create a daily cleaning task for every guest staying more than one night</label></div>') +
+    '<label class="check span-all"><input type="checkbox" id="g-dailyon"' + (s.dailyCleaning !== false ? ' checked' : '') + '>Create a daily cleaning task for every guest staying more than one night</label></div>') +
     fold('g-laundry', 'Laundry', field('Linen and towel types (one per line)', '<textarea id="g-linen" rows="6">' + esc((s.linenItems || []).join('\n')) + '</textarea>', '', 'Counted when laundry is sent out and when it comes back')) +
     fold('g-privacy', 'Guest privacy', field('Delete guest ID photos after (months)', input('g-idm', s.idPhotoMonths == null ? 6 : s.idPhotoMonths, 'type="number" min="0"'), '', 'Counted from check-out. 0 = keep forever. Guest names and ID numbers stay; only the photos are removed.')) +
     '<div class="form-actions"><button class="btn primary" type="submit">Save settings</button></div></form>';
@@ -241,7 +264,7 @@ function saveGeneral() {
 function adminRooms() {
   var html = '<div class="note">Two steps: <strong>1. Room types</strong> are price categories (rate + item checklist). <strong>2. Rooms</strong> are the actual units that appear on the Room board. Each room uses one type, so to change a room\'s price, change its type.</div>';
   html += '<div class="card"><div class="card-head"><h2>1 · Room types (price categories)</h2><button class="btn small" type="button" onclick="openRoomType()">+ Room type</button></div>' +
-    S.data.roomTypes.map(function (t) { var n = S.data.rooms.filter(function (r) { return r.typeId === t.id && !r.archived; }).length; return '<div class="list-row clickable" onclick="openRoomType(\'' + t.id + '\')"><span class="main-t"><strong>' + esc(t.name) + (t.hasKitchen ? ' · kitchen' : '') + '</strong><span>' + (t.items || []).length + ' items checked at check-out · ' + (n ? n + ' room' + (n > 1 ? 's' : '') : '<span style="color:var(--bad)">no rooms use this type yet</span>') + '</span></span><span class="row"><strong class="money">' + money(t.rate) + ' / night</strong>' + (n ? '' : '<button class="btn small danger" type="button" onclick="event.stopPropagation();deleteRoomType(\'' + t.id + '\')">Delete</button>') + '</span></div>'; }).join('') + '</div>';
+    S.data.roomTypes.map(function (t) { var n = S.data.rooms.filter(function (r) { return r.typeId === t.id && !r.archived; }).length; return '<div class="list-row clickable" onclick="openRoomType(\'' + t.id + '\')"><span class="main-t"><strong>' + esc(t.name) + (t.hasKitchen ? ' · kitchen' : '') + '</strong><span>' + (t.items || []).length + ' items checked at check-out · ' + (n ? n + ' room' + (n > 1 ? 's' : '') : '<span class="bad-text">no rooms use this type yet</span>') + '</span></span><span class="row"><strong class="money">' + money(t.rate) + ' / night</strong>' + (n ? '' : '<button class="btn small danger" type="button" onclick="event.stopPropagation();deleteRoomType(\'' + t.id + '\')">Delete</button>') + '</span></div>'; }).join('') + '</div>';
   html += '<div class="card"><div class="card-head"><h2>2 · Rooms (shown on the Room board)</h2><button class="btn small" type="button" onclick="openRoomEdit()">+ Room</button></div><div class="table-wrap"><table><thead><tr><th>Floor</th><th>Room</th><th>Type</th><th class="right">Rate</th><th>Status</th></tr></thead><tbody>' +
     roomsSorted().map(function (r) { return '<tr class="clickable" onclick="openRoomEdit(\'' + r.id + '\')"><td>' + esc(floorName(roomFloor(r))) + '</td><td><strong>' + esc(r.number) + '</strong></td><td>' + esc(roomType(r).name) + '</td><td class="right money">' + money(roomType(r).rate) + '</td><td>' + pill(ROOM_STATUS[r.status || 'ready'].label, ROOM_STATUS[r.status || 'ready'].cls) + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
   return html;
@@ -250,7 +273,7 @@ function openRoomType(id) {
   var t = byId(S.data.roomTypes, id) || { items: [] };
   var b = '<form class="form" onsubmit="event.preventDefault();saveRoomType(\'' + (id || '') + '\')"><div class="fields">' +
     field('Name', input('rt-name', t.name, 'required')) + field('Rate per night (₦)', input('rt-rate', t.rate, 'inputmode="numeric" required')) +
-    '<label class="check" style="grid-column:1/-1"><input type="checkbox" id="rt-kit"' + (t.hasKitchen ? ' checked' : '') + '>Has a kitchen</label>' +
+    '<label class="check span-all"><input type="checkbox" id="rt-kit"' + (t.hasKitchen ? ' checked' : '') + '>Has a kitchen</label>' +
     field('Room items (one per line: name x quantity)', '<textarea id="rt-items" rows="12">' + esc((t.items || []).map(function (i) { return i.name + ' x ' + i.qty; }).join('\n')) + '</textarea>', 'full', 'Counted at every check-out, e.g. "Bath towels x 2"') +
     '</div><div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Save</button></div></form>';
   openModal(id ? 'Edit ' + t.name : 'New room type', b);
@@ -262,11 +285,13 @@ function saveRoomType(id) {
   (id ? db.collection('roomTypes').doc(id).set(d, { merge: true }) : db.collection('roomTypes').add(Object.assign(d, { createdAt: Date.now() }))).catch(fail);
   audit('room_type_saved', 'roomType', id || '', d.name + ' · ' + money(d.rate) + (old && old.rate !== d.rate ? ' (was ' + money(old.rate) + ')' : '')); closeModal(); toast(id ? 'Saved' : 'Type saved. Now pick which rooms use it under "2 · Rooms".');
 }
-function deleteRoomType(id) {
+async function deleteRoomType(id) {
   var t = byId(S.data.roomTypes, id);
   if (S.data.rooms.some(function (r) { return r.typeId === id && !r.archived; })) return toast('Rooms still use this type', true);
-  if (!confirm('Delete room type "' + t.name + '"?')) return;
-  db.collection('roomTypes').doc(id).delete().catch(fail); audit('room_type_deleted', 'roomType', id, t.name); toast('Deleted');
+  if (!(await ask({ title: 'Delete room type "' + t.name + '"?', text: 'No rooms use it. You can undo this for a few seconds.', ok: 'Delete', danger: true }))) return;
+  var copy = Object.assign({}, t); delete copy.id;
+  db.collection('roomTypes').doc(id).delete().catch(fail); audit('room_type_deleted', 'roomType', id, t.name);
+  toast('Room type deleted', false, { label: 'Undo', fn: function () { db.collection('roomTypes').doc(id).set(copy).catch(fail); audit('room_type_restored', 'roomType', id, t.name); toast('Room type restored'); } });
 }
 function openRoomEdit(id) {
   var r = byId(S.data.rooms, id) || {};
@@ -283,7 +308,12 @@ function saveRoomEdit(id) {
   (id ? db.collection('rooms').doc(id).update(d) : db.collection('rooms').add(Object.assign(d, { status: 'ready', createdAt: Date.now() }))).catch(fail);
   audit('room_saved', 'room', id || '', d.number); closeModal(); toast('Saved');
 }
-function archiveRoom(id) { var r = byId(S.data.rooms, id); if (r.status === 'occupied') return toast('A guest is in this room', true); if (!confirm('Remove Room ' + r.number + ' from the board? History is kept.')) return; db.collection('rooms').doc(id).update({ archived: true }).catch(fail); audit('room_removed', 'room', id, r.number); closeModal(); }
+async function archiveRoom(id) {
+  var r = byId(S.data.rooms, id); if (r.status === 'occupied') return toast('A guest is in this room', true);
+  if (!(await ask({ title: 'Remove Room ' + r.number + '?', text: 'It disappears from the board. Its history is kept.', ok: 'Remove room', danger: true }))) return;
+  db.collection('rooms').doc(id).update({ archived: true }).catch(fail); audit('room_removed', 'room', id, r.number); closeModal();
+  toast('Room ' + r.number + ' removed', false, { label: 'Undo', fn: function () { db.collection('rooms').doc(id).update({ archived: false }).catch(fail); audit('room_restored', 'room', id, r.number); toast('Room ' + r.number + ' is back'); } });
+}
 
 function adminStaff() {
   var active = sortBy(S.data.users.filter(function (u) { return u.active !== false; }), function (u) { return u.name; });
@@ -517,7 +547,7 @@ function openRulesHelp() {
   var pid = FIREBASE_CONFIG.projectId;
   openModal('Update the security rules',
     '<div class="note warn">The app was updated but the database is still using older security rules, so some actions (recording payments, check-in, reservations with a deposit, sales) are refused.</div>' +
-    '<ol style="margin:0;padding-left:20px;line-height:1.8">' +
+    '<ol class="steps-list">' +
     '<li>Open the latest rules: <a href="https://github.com/SSSeyon/wiwe/blob/main/firestore.rules" target="_blank" rel="noopener">firestore.rules on GitHub</a>, then click the <strong>Copy raw file</strong> button (two squares icon).</li>' +
     '<li>Open <a href="https://console.firebase.google.com/project/' + esc(pid) + '/firestore/rules" target="_blank" rel="noopener">Firebase → Firestore → Rules</a>.</li>' +
     '<li>Select everything in the editor, paste, and click <strong>Publish</strong>.</li>' +

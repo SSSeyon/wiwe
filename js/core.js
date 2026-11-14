@@ -1,4 +1,4 @@
-const APP_VERSION = '3.0.0';
+const APP_VERSION = '3.1.0';
 
 /* =========================================================
    Constants
@@ -143,6 +143,9 @@ var ICONS = {
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   dot: '<circle cx="12" cy="12" r="4"/>',
   home: '<path d="M3 11l9-8 9 8M5 9v12h14V9"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/>',
+  printer: '<path d="M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/>',
+  check: '<path d="M5 12l5 5L20 7"/>',
   plus: '<path d="M12 5v14M5 12h14"/>'
 };
 function icon(name, size) { return '<svg aria-hidden="true" width="' + (size || 18) + '" height="' + (size || 18) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[name] || '') + '</svg>'; }
@@ -150,12 +153,175 @@ function icon(name, size) { return '<svg aria-hidden="true" width="' + (size || 
 /* =========================================================
    UI primitives: toast, modal, menu, dark mode
    ========================================================= */
-var toastTimer;
-function toast(msg, bad) { var t = $('toast'); t.textContent = msg; t.className = 'toast show' + (bad ? ' bad' : ''); clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.className = 'toast'; }, 3200); }
-function fail(e) { console.error(e); var m = (e && e.message) || String(e); if (m.indexOf('permission') >= 0 || m.indexOf('PERMISSION') >= 0) { if (typeof isAdmin === 'function' && isAdmin()) { if (typeof checkRules === 'function') checkRules().then(function () { if (S.rulesOutdated) openRulesHelp(); }); m = 'Refused by the database security rules. Checking whether they need updating…'; } else m = 'You do not have permission to do that.'; } toast(m, true); }
-function openModal(title, body, wide) { $('modalTitle').textContent = title; $('modalBody').innerHTML = body; $('modalCard').className = 'modal-card' + (wide ? ' wide' : ''); $('modal').classList.remove('hidden'); document.body.style.overflow = 'hidden'; hydratePhotos($('modalBody')); labelTables($('modalBody')); if (typeof restoreDraft === 'function') setTimeout(restoreDraft, 0); var f =$('modalBody').querySelector('input:not([type=hidden]):not([type=checkbox]):not([type=radio]),select,textarea'); if (f && window.innerWidth > 700) setTimeout(function () { f.focus(); }, 50); }
-function closeModal() { if (window.draftOnClose) draftOnClose(); $('modal').classList.add('hidden'); document.body.style.overflow = ''; S.form = {}; }
-document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('modal').classList.contains('hidden')) closeModal(); });
+/* Toast: a short message. Pass an action ({ label, fn }) for an Undo button; it then stays up longer. */
+var toastTimer, toastAct = null;
+function toast(msg, bad, action) {
+  var t = $('toast');
+  t.innerHTML = '<span>' + esc(msg) + '</span>' + (action ? '<button type="button" class="toast-act" onclick="toastAction()">' + esc(action.label || 'Undo') + '</button>' : '');
+  toastAct = action || null; t.className = 'toast show' + (bad ? ' bad' : '');
+  clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.className = 'toast'; toastAct = null; }, action ? 7000 : 3200);
+}
+function toastAction() { var a = toastAct; toastAct = null; $('toast').className = 'toast'; if (a && a.fn) a.fn(); }function fail(e) { console.error(e); var m = (e && e.message) || String(e); if (m.indexOf('permission') >= 0 || m.indexOf('PERMISSION') >= 0) { if (typeof isAdmin === 'function' && isAdmin()) { if (typeof checkRules === 'function') checkRules().then(function () { if (S.rulesOutdated) openRulesHelp(); }); m = 'Refused by the database security rules. Checking whether they need updating…'; } else m = 'You do not have permission to do that.'; } toast(m, true); }
+/* Pop-up. On phones it is a bottom sheet. Focus stays inside while it is open and goes back to
+   the button that opened it when it closes. */
+var modalReturn = null;
+function openModal(title, body, wide) {
+  if ($('modal').classList.contains('hidden')) modalReturn = document.activeElement;
+  $('modalTitle').textContent = title; $('modalBody').innerHTML = body; $('modalBody').scrollTop = 0;
+  $('modalCard').className = 'modal-card' + (wide ? ' wide' : '');
+  $('modal').classList.remove('hidden'); document.body.style.overflow = 'hidden'; document.body.classList.add('modal-open');
+  hydratePhotos($('modalBody')); labelTables($('modalBody')); moneyFields($('modalBody')); onePrimary([$('modalBody')]);
+  if (typeof restoreDraft === 'function') setTimeout(restoreDraft, 0);
+  var f = $('modalBody').querySelector('input:not([type=hidden]):not([type=checkbox]):not([type=radio]),select,textarea');
+  setTimeout(function () { if (f && window.innerWidth > 700) f.focus(); else $('modalCard').querySelector('.modal-head .icon-btn').focus({ preventScroll: true }); }, 50);
+}
+function closeModal() {
+  if (window.draftOnClose) draftOnClose();
+  var wasOpen = !$('modal').classList.contains('hidden');
+  $('modal').classList.add('hidden'); document.body.style.overflow = ''; document.body.classList.remove('modal-open'); S.form = {};
+  if (wasOpen && modalReturn && document.contains(modalReturn) && modalReturn.focus) modalReturn.focus({ preventScroll: true });
+  modalReturn = null;
+}
+// Keep Tab inside an open dialog or pop-up
+function focusables(box) { return Array.prototype.filter.call(box.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'), function (el) { return el.offsetParent !== null && !el.closest('.invis'); }); }
+function trapTab(e, box) {
+  var f = focusables(box); if (!f.length) return;
+  var first = f[0], last = f[f.length - 1], a = document.activeElement;
+  if (e.shiftKey && (a === first || !box.contains(a))) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && (a === last || !box.contains(a))) { e.preventDefault(); first.focus(); }
+}
+document.addEventListener('keydown', function (e) {
+  if (dialogOpen()) {
+    if (e.key === 'Escape') { e.preventDefault(); closeDialog(false); }
+    else if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'BUTTON') { e.preventDefault(); closeDialog(true); }
+    else if (e.key === 'Tab') trapTab(e, $('dialog'));
+    return;
+  }
+  if ($('modal').classList.contains('hidden')) return;
+  if (e.key === 'Escape') closeModal();
+  else if (e.key === 'Tab') trapTab(e, $('modalCard'));
+});
+
+/* In-app dialog in place of the browser's confirm() and prompt(). Both return a promise.
+   ask({ title, text, ok, cancel, danger })            → true / false
+   askText({ title, text, label, ok, value, danger })  → the text typed, or null if cancelled */
+var dlg = { resolve: null, input: false, ret: null };
+function dialogOpen() { return !!dlg.resolve; }
+function ask(o) { return openDialog(typeof o === 'string' ? { text: o } : o, false); }
+function askText(o) { return openDialog(typeof o === 'string' ? { title: o } : o, true); }
+function openDialog(o, withInput) {
+  return new Promise(function (resolve) {
+    if (dlg.resolve) dlg.resolve(dlg.input ? null : false);
+    dlg.resolve = resolve; dlg.input = withInput; if (!dlg.ret) dlg.ret = document.activeElement;
+    var d = $('dialog');
+    d.innerHTML = '<div class="dialog-card" role="alertdialog" aria-modal="true"' + (o.title ? ' aria-labelledby="dlg-t"' : '') + (o.text ? ' aria-describedby="dlg-x"' : '') + '>' +
+      (o.title ? '<h2 id="dlg-t">' + esc(o.title) + '</h2>' : '') +
+      (o.text ? '<p id="dlg-x" class="dlg-text">' + esc(o.text).replace(/\n/g, '<br>') + '</p>' : '') +
+      (withInput ? '<label class="field">' + esc(o.label || 'Reason') + '<input id="dlg-in" value="' + esc(o.value || '') + '" autocomplete="off" oninput="this.classList.remove(\'invalid\')"></label>' : '') +
+      '<div class="dlg-actions"><button type="button" class="btn" onclick="closeDialog(false)">' + esc(o.cancel || 'Cancel') + '</button>' +
+      '<button type="button" class="btn ' + (o.danger ? 'danger-solid' : 'primary') + '" id="dlg-ok" onclick="closeDialog(true)">' + esc(o.ok || 'OK') + '</button></div></div>';
+    d.classList.remove('hidden');
+    d.onclick = function (e) { if (e.target === d) closeDialog(false); };
+    setTimeout(function () { var f = $('dlg-in') || $('dlg-ok'); if (f) f.focus(); }, 30);
+  });
+}
+function closeDialog(ok) {
+  var r = dlg.resolve; if (!r) return;
+  var v = null;
+  if (dlg.input && ok) { v = val('dlg-in'); if (!v) { $('dlg-in').classList.add('invalid'); $('dlg-in').focus(); return; } }
+  var input = dlg.input, ret = dlg.ret;
+  dlg.resolve = null; dlg.ret = null; $('dialog').classList.add('hidden'); $('dialog').innerHTML = '';
+  if (ret && document.contains(ret) && ret.focus) ret.focus({ preventScroll: true });
+  r(input ? (ok ? v : null) : !!ok);
+}
+
+/* Money boxes: any field whose label says ₦ gets a ₦ in front and thousands separators as you type.
+   num() ignores the commas, so the rest of the app reads them as before. */
+function fmtThousands(v) { var s = String(v == null ? '' : v).replace(/[^0-9]/g, '').replace(/^0+(?=\d)/, ''); return s.replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+function setMoney(id, n) { var el = $(id); if (el) el.value = n ? fmtThousands(Math.round(Number(n) || 0)) : ''; }
+function moneyFields(root) {
+  if (!root) return;
+  root.querySelectorAll('label.field').forEach(function (lab) {
+    var inp = lab.querySelector('input'), tn = lab.firstChild;
+    if (!inp || inp.classList.contains('money-in') || inp.type === 'number' || inp.type === 'date' || inp.readOnly && !inp.id) return;
+    if (!tn || tn.nodeType !== 3 || tn.nodeValue.indexOf('₦') < 0) return;
+    tn.nodeValue = tn.nodeValue.replace(/\s*\(₦\)/, '').replace('(₦, ', '(');
+    inp.classList.add('money-in'); inp.setAttribute('inputmode', 'numeric'); inp.setAttribute('autocomplete', 'off');
+    var w = document.createElement('span'); w.className = 'money-wrap'; w.innerHTML = '<span class="cur" aria-hidden="true">₦</span>';
+    inp.parentNode.insertBefore(w, inp); w.appendChild(inp);
+    if (inp.value) { inp.value = fmtThousands(inp.value); inp.defaultValue = inp.value; }
+  });
+}
+document.addEventListener('input', function (e) {
+  var el = e.target; if (!el.classList || !el.classList.contains('money-in')) return;
+  var pos = el.selectionStart || 0, digitsBefore = el.value.slice(0, pos).replace(/[^0-9]/g, '').length, f = fmtThousands(el.value);
+  if (f === el.value) return;
+  el.value = f;
+  var i = 0, n = 0; while (i < f.length && n < digitsBefore) { if (/\d/.test(f[i])) n++; i++; }
+  try { el.setSelectionRange(i, i); } catch (x) {}
+}, true);
+
+/* One main (filled) button per screen: the first one wins, later ones become plain buttons.
+   Buttons in a form's own Save row and small buttons in lists are left alone. */
+function onePrimary(roots) {
+  var seen = false;
+  roots.forEach(function (root) {
+    if (!root) return;
+    root.querySelectorAll('.btn.primary:not(.small)').forEach(function (b) {
+      if (b.closest('.form-actions, .step-bar, .dlg-actions')) return;
+      if (seen) b.classList.remove('primary'); seen = true;
+    });
+  });
+}
+
+/* A form split into its fieldsets, one per screen, with Back / Next and a bar pinned at the bottom
+   (used for check-in on phones). opts: { finish: label of the last button, amount: id of the total to show } */
+function stepForm(form, opts) {
+  var sets = Array.prototype.filter.call(form.children, function (c) { return c.matches('fieldset.group'); });
+  if (sets.length < 2) return;
+  form.classList.add('stepped'); $('modalCard').classList.add('full');
+  var head = document.createElement('div'); head.className = 'steps-head'; form.insertBefore(head, form.firstChild);
+  var bar = document.createElement('div'); bar.className = 'step-bar';
+  bar.innerHTML = '<div class="collect"><span>' + esc(opts.amountLabel || 'Collect now') + '</span><strong id="sb-amt">—</strong></div>' +
+    '<button type="button" class="btn" id="sb-back">Back</button><button type="button" class="btn primary" id="sb-next">Next</button>';
+  form.appendChild(bar);
+  var i = 0;
+  function name(fs) { var l = fs.querySelector('legend'); return l ? l.textContent.replace(/^\s*\d+\s*·\s*/, '') : ''; }
+  function show(n) {
+    i = Math.max(0, Math.min(sets.length - 1, n));
+    sets.forEach(function (f, k) { f.classList.toggle('cur', k === i); });
+    form.classList.toggle('last', i === sets.length - 1);
+    head.innerHTML = '<div class="steps-dots" aria-hidden="true">' + sets.map(function (f, k) { return '<span' + (k <= i ? ' class="on"' : '') + '></span>'; }).join('') + '</div>' +
+      '<div class="steps-label" aria-live="polite">Step ' + (i + 1) + ' of ' + sets.length + ' · ' + esc(name(sets[i])) + '</div>';
+    $('sb-back').classList.toggle('invis', i === 0);
+    $('sb-next').textContent = i === sets.length - 1 ? (opts.finish || 'Save') : 'Next';
+    $('modalBody').scrollTop = 0;
+  }
+  function stepValid() {
+    var bad = Array.prototype.find.call(sets[i].querySelectorAll('input,select,textarea'), function (el) { return !el.checkValidity(); });
+    if (bad) { bad.reportValidity(); return false; } return true;
+  }
+  $('sb-back').onclick = function () { show(i - 1); };
+  $('sb-next').onclick = function () { if (!stepValid()) return; if (i < sets.length - 1) show(i + 1); else if (form.requestSubmit) form.requestSubmit(); else form.dispatchEvent(new Event('submit', { cancelable: true })); };
+  form.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox') { e.preventDefault(); $('sb-next').click(); } });
+  show(0);
+}
+
+/* Friendly empty state: what belongs here, and a button to add it */
+function emptyState(ic, title, text, btnLabel, btnJs, inline) {
+  return '<div class="' + (inline ? 'empty-state inline' : 'card empty-state') + '"><span class="es-icon">' + icon(ic || 'list', 22) + '</span><strong>' + esc(title) + '</strong>' +
+    (text ? '<p>' + esc(text) + '</p>' : '') + (btnLabel ? '<button type="button" class="btn primary" onclick="' + btnJs + '">' + esc(btnLabel) + '</button>' : '') + '</div>';
+}
+/* A record in a list: line 1 the main thing (amount, guest), line 2 the details, line 3 who and when.
+   o: { l1, l2, l3 (HTML, already escaped), extra, side, click } */
+function recRow(o) {
+  return '<div class="rec' + (o.click ? ' clickable" onclick="' + o.click : '') + '"><span class="rec-main"><span class="rec-l1">' + o.l1 + '</span>' +
+    (o.l2 ? '<span class="rec-l2">' + o.l2 + '</span>' : '') + (o.l3 ? '<span class="rec-l3">' + o.l3 + '</span>' : '') + (o.extra || '') + '</span>' +
+    (o.side ? '<span class="rec-side">' + o.side + '</span>' : '') + '</div>';
+}
+function dots(parts) { return parts.filter(function (x) { return x != null && x !== ''; }).map(esc).join(' · '); }
+/* Grey placeholders while something loads */
+function skeleton(lines, stats) { var h = ''; if (stats) { h += '<div class="skel-stats" aria-hidden="true">'; for (var s = 0; s < stats; s++) h += '<i></i>'; h += '</div>'; } h += '<div class="skel" role="status" aria-label="Loading">'; for (var i = 0; i < (lines || 4); i++) h += '<i></i>'; return h + '</div>'; }document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('modal').classList.contains('hidden')) closeModal(); });
 var THEMES = { colour: '#4F46E5', mono: '#FFFFFF', cream: '#F4E6B8' };
 var THEME_NAMES = { colour: 'Colourful', mono: 'Black & white', cream: 'Black & cream' };
 function curTheme() { return document.body.getAttribute('data-theme') || 'colour'; }
@@ -186,29 +352,39 @@ function lastPayMethod() { try { var m = localStorage.getItem('wiwe_paymethod');
 function rememberPayMethod(m) { if (PAY_METHODS[m]) try { localStorage.setItem('wiwe_paymethod', m); } catch (e) {} }
 function payChoices(name, extra) { var d = lastPayMethod(); return '<div class="choices" role="radiogroup" aria-label="Payment method">' + Object.keys(PAY_METHODS).map(function (k) { return '<label class="choice"><input type="radio" name="' + name + '" value="' + k + '"' + (k === d ? ' checked' : '') + (extra || '') + '>' + PAY_METHODS[k] + '</label>'; }).join(''); }
 /* Fill an amount box with the amount due, unless the user has typed in it */
-function prefillAmount(id, amount) { var a = $(id); if (a && !a.dataset.touched) a.value = amount > 0 ? amount : ''; }
+function prefillAmount(id, amount) { var a = $(id); if (a && !a.dataset.touched) a.value = amount > 0 ? (a.classList.contains('money-in') ? fmtThousands(Math.round(amount)) : amount) : ''; }
 /* A card that folds open and shut; remembers its state while the app is open */
 function foldOpen(key, def) { S.fold = S.fold || {}; return key in S.fold ? S.fold[key] : !!def; }
 function fold(key, title, body, def, extra) { return '<details class="card fold" data-k="' + key + '"' + (foldOpen(key, def) ? ' open' : '') + ' ontoggle="S.fold=S.fold||{};S.fold[this.dataset.k]=this.open"><summary><h2>' + esc(title) + '</h2>' + (extra || '') + '</summary><div class="fold-body">' + body + '</div></details>'; }
 /* Second row of small tabs inside a tab (e.g. Inventory → More) */
 function subTabs(key, list) { var cur = S.tab[key] || list[0][0]; return '<div class="subtabs" role="tablist">' + list.map(function (t) { return '<button type="button" role="tab" aria-selected="' + (cur === t[0]) + '" class="subtab' + (cur === t[0] ? ' on' : '') + '" onclick="setTab(\'' + key + '\',\'' + t[0] + '\')">' + esc(t[1]) + '</button>'; }).join('') + '</div>'; }
 
-/* Little icons on the cards inside each section, chosen from the card's heading. */
-var CARD_ICON_RULES = [
-  [/alert|attention|warning|setup|rules|leak|watch/i, 'alert'], [/summary|brief|handover|hand over|hand-over/i, 'clipboard'],
-  [/recorded|received/i, 'payments'], [/spent|diesel|fuel/i, 'expenses'], [/batch|pieces|returned/i, 'shirt'], [/standard|kitchen/i, 'building'], [/yesterday|^net$/i, 'reports'],
-  [/shift|cash|till|drawer/i, 'shift'], [/refund|payment|transfer|bank|pos\b|confirm/i, 'payments'],
-  [/sale|sell|price|selling/i, 'tag'], [/laundry|linen|towel|sheet/i, 'shirt'],
-  [/clean|housekeep|turnover|inspect/i, 'housekeeping'], [/maint|repair|fault|job|asset|vendor|technician/i, 'maintenance'],
-  [/stock|store|supplies|item|inventory|restock|usage|movement/i, 'inventory'], [/expense|spend|bill|cost/i, 'expenses'],
-  [/report|revenue|earn|income|occupancy|rate|money|profit|month/i, 'reports'], [/calendar|reservation|arriv|depart|booking|movements today/i, 'calendar'],
-  [/guest|stay|check/i, 'stays'], [/staff|account|user|people|team|role/i, 'users'],
-  [/code|security|lock|password|admin/i, 'admin'], [/audit|activity|log|history/i, 'list'],
-  [/backup|export|download/i, 'download'], [/photo|\bid\b/i, 'camera'], [/room|floor|building|board/i, 'building'],
-  [/setting|general|business/i, 'gear']
-];
-function cardIconFor(text) { for (var i = 0; i < CARD_ICON_RULES.length; i++) if (CARD_ICON_RULES[i][0].test(text)) return CARD_ICON_RULES[i][1]; return ICONS[S.view] && S.view !== 'today' ? S.view : 'dot'; }
-/* On phones, tables turn into two-line rows; each cell needs its column name to show beside it */
+/* Little icons on the cards inside each section. Each heading has its icon set here (or with
+   data-icon on the heading); headings that start with a name ("Handover from …") match by their start. */
+var CARD_ICONS = {
+  'Needs attention': 'alert', 'Leak watch and approvals': 'alert', 'Leak indicators': 'alert', 'Waiting approval': 'alert', 'Refunds to approve': 'alert',
+  'Arrivals and departures': 'calendar', 'Today': 'calendar', 'Next 30 days': 'calendar',
+  'Occupied': 'building', 'Occupancy': 'reports', 'Occupancy now': 'building', 'Rooms out of order': 'building', '2 · Rooms (shown on the Room board)': 'building', '1 · Room types (price categories)': 'tag',
+  'Guests owing': 'stays', 'Guests owing now': 'stays', 'Where guests came from': 'stays',
+  'Recorded today': 'payments', 'By POS today': 'payments', 'Payments recorded today': 'payments', 'Income': 'reports', 'Net': 'reports', 'Yesterday': 'reports', 'Last 6 months': 'reports', 'By room': 'building',
+  'Expenses': 'expenses', 'Total spent': 'expenses', 'Diesel': 'expenses', 'Expenses by category': 'expenses', 'By category': 'expenses', 'Repair spend this month': 'expenses',
+  'Yesterday in brief': 'clipboard', 'Recent activity': 'list', 'Last 300 actions': 'list',
+  'Your shift': 'shift', 'No shift open': 'shift', 'Recent shifts': 'shift', 'Handover from': 'shift',
+  'To do': 'housekeeping', 'In progress': 'housekeeping', 'Waiting inspection': 'housekeeping', 'Waiting for inspection': 'housekeeping', 'Done today': 'housekeeping', 'My tasks in progress': 'housekeeping', 'Others in progress': 'housekeeping', 'Sent for inspection': 'housekeeping', 'Checklist': 'housekeeping', 'Inspection': 'housekeeping', 'Turnover cleaning': 'housekeeping',
+  'Photos': 'camera', 'Restocked from store': 'inventory',
+  'Open jobs': 'maintenance', 'Open': 'maintenance', 'Recently closed': 'maintenance', 'Fixed · waiting for you to check': 'maintenance', 'Check the repair': 'maintenance', 'Service due (7 days)': 'maintenance',
+  'To reorder': 'inventory', 'Sales this month': 'tag',
+  'Batches out': 'shirt', 'Pieces out': 'shirt', 'Missing this month': 'shirt', 'At the laundry': 'shirt', 'Returned': 'shirt',
+  'Staff accounts': 'users', 'Previous holders and disabled accounts': 'users', 'Change admin code': 'admin', 'My password': 'key', 'Backup': 'download',
+  'Appearance (this device)': 'gear', 'Guests and money': 'payments', 'Places': 'building', 'Cleaning checklists': 'housekeeping', 'Laundry': 'shirt', 'Guest privacy': 'camera'
+};
+function cardIconFor(h) {
+  if (h.dataset && h.dataset.icon) return h.dataset.icon;
+  var t = (h.textContent || '').trim();
+  if (CARD_ICONS[t]) return CARD_ICONS[t];
+  for (var k in CARD_ICONS) if (t.indexOf(k + ' ') === 0) return CARD_ICONS[k];
+  return ICONS[S.view] && S.view !== 'today' ? S.view : 'dot';
+}/* On phones, tables turn into two-line rows; each cell needs its column name to show beside it */
 /* Rows that open something when tapped can also be reached and opened with the keyboard */
 function keyRows(root) { root.querySelectorAll('.clickable[onclick]:not([tabindex])').forEach(function (el) { el.setAttribute('tabindex', '0'); if (el.tagName !== 'TR') el.setAttribute('role', 'button'); }); }
 document.addEventListener('keydown', function (e) { var t = e.target; if ((e.key === 'Enter' || e.key === ' ') && t && t.classList && t.classList.contains('clickable') && t.hasAttribute('onclick')) { e.preventDefault(); t.click(); } });
@@ -217,7 +393,7 @@ function labelTables(root) {
   keyRows(root);
   root.querySelectorAll('table:not(.cal)').forEach(function (t) {
     var heads = Array.prototype.map.call(t.querySelectorAll('thead th'), function (th) { return th.textContent.trim(); });
-    if (!heads.length) return;
+    if (!heads.length || t.closest('.rcpt')) return;
     t.classList.add('stackable');
     t.querySelectorAll('tbody tr').forEach(function (tr) { Array.prototype.forEach.call(tr.children, function (td, i) { if (heads[i]) td.setAttribute('data-label', heads[i]); }); });
   });
@@ -227,7 +403,7 @@ function decorateCards(root) {
   labelTables(root);
   root.querySelectorAll('.card h2, .stat .label').forEach(function (h) {
     if (h.querySelector('.ci') || h.closest('.home-grid')) return;
-    var name = cardIconFor(h.textContent || '');
+    var name = cardIconFor(h);
     h.insertAdjacentHTML('afterbegin', '<span class="ci ci-' + name + '" aria-hidden="true">' + icon(name, h.tagName === 'H2' ? 15 : 13) + '</span>');
   });
 }
@@ -309,7 +485,7 @@ function validPassword(p) { return String(p || '').length >= 6; }
 
 function showLogin(mode, msg) {
   $('boot').classList.add('hidden'); $('app').classList.add('hidden'); $('login').classList.remove('hidden');
-  var head = '<img class="login-photo" src="img/building.jpg" alt="Wiwe Apartments building, Sowhe, Badagry"><img class="login-logo logo-img" src="img/logo.png" alt="Wiwe Apartments"><div class="muted" style="text-align:center;margin-top:-8px">Operations</div>';
+  var head = '<img class="login-photo" src="img/building.jpg" alt="Wiwe Apartments building, Sowhe, Badagry"><img class="login-logo logo-img" src="img/logo.png" alt="Wiwe Apartments"><div class="muted login-sub">Operations</div>';
   if (mode === 'config') {
     $('login').innerHTML = '<div class="login-card">' + head + '<h2>Almost there</h2><p class="muted">Add your Firebase project settings to <strong>config.js</strong>, then reload. See HANDOVER.md for the steps.</p></div>';
     return;
@@ -387,7 +563,7 @@ async function doSetup() {
   } catch (e) { showLogin('setup', e.message || String(e)); }
 }
 
-async function signOut() { if (!confirm('Sign out of Wiwe?')) return; stopListeners(); S.adminUntil = 0; await auth.signOut(); }
+async function signOut() { if (!(await ask({ title: 'Sign out?', text: 'You will need your username and password to come back in.', ok: 'Sign out' }))) return; stopListeners(); S.adminUntil = 0; await auth.signOut(); }
 
 /* =========================================================
    Live data
@@ -587,8 +763,7 @@ function fitHome() {
   if (window.innerWidth > 860) { g.style.height = ''; g.removeAttribute('data-cols'); return; }
   var n = g.children.length, bb = $('bottomBar'), bottom = bb && bb.offsetHeight ? bb.getBoundingClientRect().top : window.innerHeight;
   g.setAttribute('data-cols', n <= 6 ? 2 : 3);
-  var z = parseFloat(getComputedStyle(document.documentElement).zoom) || 1; // text size uses CSS zoom; screen pixels -> CSS pixels
-  g.style.height = Math.max(0, Math.floor((bottom - g.getBoundingClientRect().top - 12) / z)) + 'px';
+  g.style.height = Math.max(0, Math.floor(bottom - g.getBoundingClientRect().top - 12)) + 'px';
 }
 window.addEventListener('resize', function () { if (S.view === 'home') fitHome(); });
 function setTab(view, tab) { S.tab[view] = tab; render(); }
@@ -615,6 +790,8 @@ function render() {
   if (active && $(active) && $('view').contains($(active))) { var el = $(active); el.focus(); if (el.setSelectionRange && el.type === 'search') { var l = el.value.length; el.setSelectionRange(l, l); } }
   hydratePhotos($('view'));
   decorateCards($('view'));
+  moneyFields($('view'));
+  onePrimary([$('topActions'), $('view')]);
   paintBottomBar();
   if (S.view === 'home') fitHome();
   if (typeof afterRender === 'function') afterRender();
@@ -637,13 +814,13 @@ VIEWS.account = {
     var mine = NAV.filter(function (n) { return has.apply(null, n.roles); });
     var h = '<div class="acct-col">';
     h += '<div class="card"><div class="acct-head"><span class="avatar big">' + esc(initials(me.name)) + '</span><div class="main-t"><strong>' + esc(me.name) + '</strong><span>@' + esc(me.username || '') + ' · ' + esc((me.roles || []).map(function (r) { return ROLES[r]; }).join(', ')) + (me.phone ? ' · ' + esc(me.phone) : '') + '</span></div></div>' +
-      '<div class="acct-opts" style="margin-top:14px"><button class="btn" type="button" onclick="openMyPassword()">' + icon('key') + 'Change password</button>' +
+      '<div class="acct-opts mt-3"><button class="btn" type="button" onclick="openMyPassword()">' + icon('key') + 'Change password</button>' +
       '<button class="btn danger" type="button" onclick="signOut()">' + icon('logout') + 'Sign out</button>' +
       (isAdmin() ? '<button class="btn" type="button" onclick="go(\'admin\')">' + icon('admin') + 'Admin settings</button>' : '') + '</div>' +
-      '<div class="muted" style="margin-top:10px">' + (isAdmin() ? 'Change names, roles and usernames in Admin settings → Staff.' : 'To change your name, role or username, or if you forget your password, ask the owner.') + '</div></div>';
+      '<div class="muted mt-2">' + (isAdmin() ? 'Change names, roles and usernames in Admin settings → Staff.' : 'To change your name, role or username, or if you forget your password, ask the owner.') + '</div></div>';
     h += '<div class="card"><h2>Appearance (this device)</h2>' +
       '<div class="field">Colour scheme<div class="acct-opts">' + ['colour', 'mono', 'cream'].map(function (k) { return opt(t === k, "setTheme('" + k + "')", THEME_NAMES[k], '<span class="sw sw-' + k + '"></span>'); }).join('') + '</div></div>' +
-      '<div class="acct-two"><div class="field">Dark mode<div class="acct-opts">' + opt(!dark, dark ? 'toggleDark()' : '', 'Off') + opt(dark, dark ? '' : 'toggleDark()', 'On') + '</div></div>' +
+      '<div class="acct-two"><div class="field">Dark mode<div class="acct-opts">' + opt(!dark, dark ? 'toggleDark()' : '', 'Off', icon('sun', 16)) + opt(dark, dark ? '' : 'toggleDark()', 'On', icon('moon', 16)) + '</div></div>' +
       '<div class="field">Text size<div class="acct-opts">' + [['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']].map(function (s) { return opt(z === s[0], "setTextSize('" + s[0] + "')", s[1]); }).join('') + '</div></div></div>' +
       '<label class="field">Open the app on<select onchange="setStartPage(this.value)"><option value="home">Home</option>' + mine.map(function (n) { return '<option value="' + n.id + '"' + (startPage() === n.id ? ' selected' : '') + '>' + esc(n.label) + '</option>'; }).join('') + '</select></label></div>';
     h += '<div class="acct-foot muted">Wiwe app version ' + esc(APP_VERSION) + ' · <button class="linkish" type="button" onclick="checkForUpdate()">Check for update</button></div>';
