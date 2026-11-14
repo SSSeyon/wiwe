@@ -11,12 +11,12 @@ VIEWS.today = {
       var p = allPayments().filter(function (x) { return dateStr(new Date(x.at)) === day && x.amount > 0 && payCounts(x); });
       var e = S.data.expenses.filter(function (x) { return dateStr(new Date(x.at)) === day && x.status !== 'rejected' && x.status !== 'void'; });
       var by = function (m) { return sum(p.filter(function (x) { return x.method === m; }), function (x) { return x.amount; }); };
-      return { list: p, exp: sum(p, function (x) { return x.amount; }), pos: by('pos'), transfer: by('transfer'), spent: sum(e, function (x) { return x.amount; }) };
+      return { list: p, exp: sum(p, function (x) { return x.amount; }), conf: sum(p.filter(function (x) { return x.status === 'confirmed'; }), function (x) { return x.amount; }), pos: by('pos'), transfer: by('transfer'), spent: sum(e, function (x) { return x.amount; }) };
     }
     var td = money4(t), yd = money4(y), rooms = roomsSorted(), occ = rooms.filter(function (r) { return r.status === 'occupied'; }).length;
     var al = alerts(), owe = debtors();
     var html = '<section class="grid-stats">' +
-      '<div class="stat dark"><span class="label">Recorded today</span><span class="value">' + money(td.exp) + '</span><span class="sub">' + money(td.pos) + ' POS · ' + money(td.transfer) + ' transfer</span></div>' +
+      '<div class="stat dark"><span class="label">Recorded today</span><span class="value">' + money(td.exp) + '</span><span class="sub">' + money(td.conf) + ' confirmed · ' + money(td.pos) + ' POS</span></div>' +
       stat('Yesterday', money(yd.exp), money(yd.pos) + ' POS · ' + money(yd.spent) + ' spent') +
       stat('Occupancy now', occ + ' / ' + rooms.length, Math.round(occ / Math.max(1, rooms.length) * 100) + '%') +
       stat('Guests owing', money(sum(owe, function (s) { return s.balance; })), owe.length + ' stay' + (owe.length === 1 ? '' : 's') + ' · ' + money(td.spent) + ' spent today', owe.length ? 'warn' : '') + '</section>';
@@ -181,7 +181,7 @@ function printPage() { document.querySelectorAll('#view details').forEach(functi
 }function exportCsv(kind) {
   var R = S.report; if (!R) return toast('Load a month first', true);
   var rows = kind === 'payments'
-    ? [['Date', 'Room', 'Guest', 'Kind', 'Method', 'Sender', 'Reference', 'Amount', 'Status', 'Recorded by']].concat(R.payments.map(function (p) { return [fmtDT(p.at), p.roomNo, p.guestName, PAY_KIND[p.kind] || p.kind, PAY_LABEL[p.method] || p.method, p.sender, p.ref, p.amount, p.status === 'void' ? 'void' : p.status === 'rejected' ? 'refused' : p.status === 'unconfirmed' && p.amount < 0 ? 'refund waiting' : 'recorded', p.byName]; }))
+    ? [['Date', 'Room', 'Guest', 'Kind', 'Method', 'Sender', 'Reference', 'Amount', 'Status', 'Recorded by']].concat(R.payments.map(function (p) { return [fmtDT(p.at), p.roomNo, p.guestName, PAY_KIND[p.kind] || p.kind, PAY_LABEL[p.method] || p.method, p.sender, p.ref, p.amount, p.status === 'void' ? 'void' : p.status === 'rejected' ? 'refused' : p.status === 'unconfirmed' ? (p.amount < 0 ? 'refund waiting' : 'unconfirmed') : 'confirmed', p.byName]; }))
     : [['Date', 'Category', 'Description', 'Paid to', 'Amount', 'Litres', 'Status', 'Recorded by']].concat(R.expenses.map(function (e) { return [fmtDT(e.at), EXPENSE_CATS[e.category] || e.category, e.description, e.paidTo, e.amount, e.litres || '', e.status, e.byName]; }));
   var csv = rows.map(function (r) { return r.map(function (c) { var isNum = typeof c === 'number'; c = String(c == null ? '' : c); if (!isNum && /^[=+\-@]/.test(c)) c = "'" + c; /* a spreadsheet must not run a guest's name as a formula */ return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(','); }).join('\n');
   var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'wiwe-' + kind + '-' + R.month + '.csv'; a.click();
@@ -511,6 +511,7 @@ function dailySummaryText(day) {
   var lines = ['*Wiwe Apartments · ' + fmtDate(day) + '*', '',
     'Money recorded: ' + money(sum(pays, function (p) { return p.amount; })) + ' (' + pays.length + ' payments)',
     'POS: ' + by('pos') + ' · Bank transfer: ' + by('transfer'),
+    'Still to confirm (all days): ' + unconfirmedPayments().length + ' · ' + money(sum(unconfirmedPayments(), function (p) { return p.amount; })),
     'Item sales: ' + money(sum(sales, function (m) { return m.total; })),
     'Spent: ' + money(sum(exps, function (e) { return e.amount; })) + (pendingExpenses().length ? ' · ' + pendingExpenses().length + ' waiting for your approval' : ''),
     'Guests owing: ' + money(sum(owe, function (s) { return s.balance; })) + ' (' + owe.length + ')',

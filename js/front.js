@@ -127,7 +127,7 @@ async function backInService(id, asked) {
 
 /* ---------- Check-in ---------- */
 function sourceField(id, sel) { return field('How did they book?', '<select id="' + id + '">' + objOpts(SOURCES, sel || 'walkin') + '</select>'); }
-function payNote() { return '<div class="note">Take the payment on the POS first, then type the reference printed on the slip. A reference can only be used once.</div>'; }
+function payNote() { return '<div class="note">Take the payment on the POS first, then type the reference printed on the slip. A reference can only be used once.' + (isAdmin() ? '' : ' The payment shows as "Unconfirmed" until the owner matches it to the POS settlement.') + '</div>'; }
 function openCheckIn(roomId, reservationId) {
   if (!has('manager', 'frontdesk')) return toast('Only front desk can check guests in', true);
   var rv = reservationId ? findStay(reservationId) : null;
@@ -247,7 +247,7 @@ async function saveCheckIn() {
   };
   if (!S.form.rvId) Object.assign(stay, { createdAt: now, by: S.user.uid, byName: meName() });
   b.set(sref, stay, { merge: true });
-  var pay = { stayId: sref.id, roomNo: r.number, guestName: stay.guestName, method: method, sender: '', ref: ref, photos: S.form.payPhotos, status: 'confirmed' };
+  var pay = { stayId: sref.id, roomNo: r.number, guestName: stay.guestName, method: method, sender: '', ref: ref, photos: S.form.payPhotos, status: payStatus() };
   if (roomPaid > 0) b.set(db.collection('payments').doc(), Object.assign({ amount: roomPaid, kind: 'room' }, pay, stamp()));
   if (cautionPaid > 0) b.set(db.collection('payments').doc(), Object.assign({ amount: cautionPaid, kind: 'caution' }, pay, stamp()));
   b.update(db.collection('rooms').doc(r.id), { status: 'occupied', currentStayId: sref.id });
@@ -295,7 +295,7 @@ async function saveReservation() {
   if (dep > 0 && !(await refOk(pref))) return;
   var ref = db.collection('stays').doc(), b = db.batch(), name = val('rv-name');
   b.set(ref, Object.assign({ roomId: r.id, roomNo: r.number, roomTypeName: roomType(r).name, guestName: name, phone: val('rv-phone'), source: val('rv-source') || 'phone', checkInDate: from, checkOutDate: to, nights: n, arrivalTime: val('rv-time'), notes: val('rv-note'), deposit: dep, paid: dep, status: 'reserved', createdAt: Date.now() }, stamp()));
-  if (dep > 0) b.set(db.collection('payments').doc(), Object.assign({ stayId: ref.id, roomNo: r.number, guestName: name, amount: dep, kind: 'deposit', method: method, sender: '', ref: pref, photos: S.form.payPhotos || [], status: 'confirmed' }, stamp()));
+  if (dep > 0) b.set(db.collection('payments').doc(), Object.assign({ stayId: ref.id, roomNo: r.number, guestName: name, amount: dep, kind: 'deposit', method: method, sender: '', ref: pref, photos: S.form.payPhotos || [], status: payStatus() }, stamp()));
   audit('reservation', 'stay', ref.id, 'Room ' + r.number + ' · ' + name + ' · ' + from + (dep ? ' · deposit ' + money(dep) : ''), b);
   b.commit().catch(fail);
   closeModal(); toast(dep ? 'Reservation saved with ' + money(dep) + ' deposit' : 'Reservation saved');
@@ -460,7 +460,7 @@ async function saveExtend() {
   upd.paid = FV.increment(amount); upd.balance = FV.increment(extra - amount);
   var b = db.batch();
   b.update(db.collection('stays').doc(s.id), upd);
-  if (amount > 0) b.set(db.collection('payments').doc(), Object.assign({ stayId: s.id, roomNo: s.roomNo, guestName: s.guestName, amount: amount, kind: only ? 'balance' : 'extension', method: method, sender: '', ref: ref, photos: S.form.payPhotos, status: 'confirmed' }, stamp()));
+  if (amount > 0) b.set(db.collection('payments').doc(), Object.assign({ stayId: s.id, roomNo: s.roomNo, guestName: s.guestName, amount: amount, kind: only ? 'balance' : 'extension', method: method, sender: '', ref: ref, photos: S.form.payPhotos, status: payStatus() }, stamp()));
   audit(only ? 'balance_payment' : 'extend', 'stay', s.id, (n ? '+' + n + ' nights · ' : '') + 'paid ' + money(amount), b);
   b.commit().catch(fail);
   closeModal(); toast(only ? 'Payment recorded' : 'Stay extended to ' + fmtDate(newOut));
@@ -512,7 +512,7 @@ async function saveCheckOut() {
     upd.checkOutDate = todayStr(); upd.nights = Math.max(1, (s.nights || 0) - S.form.unused);
     if (early > 0) b.set(db.collection('payments').doc(), Object.assign({ stayId: s.id, roomNo: s.roomNo, guestName: s.guestName, amount: -early, kind: 'refund_early', method: 'transfer', ref: val('co-refref'), note: 'Early check-out: ' + S.form.unused + ' unused night(s)', status: 'unconfirmed' }, stamp()));
   }
-  if (!caution && ded > 0) b.set(db.collection('payments').doc(), Object.assign({ stayId: s.id, roomNo: s.roomNo, guestName: s.guestName, amount: ded, kind: 'damage', method: lastPayMethod(), sender: '', ref: val('co-dref'), photos: [], status: 'confirmed' }, stamp()));
+  if (!caution && ded > 0) b.set(db.collection('payments').doc(), Object.assign({ stayId: s.id, roomNo: s.roomNo, guestName: s.guestName, amount: ded, kind: 'damage', method: lastPayMethod(), sender: '', ref: val('co-dref'), photos: [], status: payStatus() }, stamp()));
   b.update(db.collection('stays').doc(s.id), upd);
   b.update(db.collection('rooms').doc(r.id), { status: 'dirty', currentStayId: null });
   if (missing.length || note || !card) b.set(db.collection('incidents').doc(), Object.assign({ type: 'missing_item', title: 'Room ' + s.roomNo + ': ' + (missing.length ? missing.map(function (m) { return m.name + ' × ' + m.short; }).join(', ') : '') + (note ? ' ' + note : '') + (!card ? ' · key card not returned' : ''), roomNo: s.roomNo, stayId: s.id, photos: S.form.damagePhotos, charged: ded, resolved: false }, stamp()));
@@ -560,15 +560,16 @@ VIEWS.stays = {
 };
 
 /* ---------- Payments ---------- */
-// A payment is final the moment it is recorded (the POS has already taken the money).
-// The owner can void a wrong record; only refunds wait for approval.
+// Staff payments wait as "unconfirmed" until the owner matches them to the POS settlement or bank.
+// The owner can also void a wrong record. Refunds wait for approval.
 var PAY_KIND = { room: 'Room', extension: 'Extension', balance: 'Balance', deposit: 'Deposit', caution: 'Caution fee', damage: 'Damage', refund: 'Caution refund', refund_early: 'Early check-out refund', refund_deposit: 'Deposit refund', sale: 'Item sale' };
 var PAY_ON_STAY = ['room', 'extension', 'balance', 'deposit']; // kinds that count towards what the guest has paid for the room
 function payPill(p) {
   if (p.status === 'void') return pill('Void', 'st-ooo');
   if (p.status === 'rejected') return pill(p.amount < 0 ? 'Refund refused' : 'Not received', 'st-bad');
   if (p.status === 'unconfirmed' && p.amount < 0) return pill('Waiting for approval', 'st-alert');
-  return p.amount < 0 ? pill('Refunded', 'st-ready') : '';
+  if (p.status === 'unconfirmed') return pill('Unconfirmed', 'st-alert');
+  return p.amount < 0 ? pill('Refunded', 'st-ready') : pill('Confirmed', 'st-ready');
 }
 function normRef(r) { return String(r || '').replace(/\s+/g, '').toLowerCase(); }
 // The same slip used for two payments is the classic trick. Two parts of one payment (room + caution) share a reference and are fine.
@@ -591,7 +592,8 @@ function staysEmpty(tab, q) {
 }
 function paymentRow(p) {
   var acts = '', dup = dupOf(p);
-  if (isAdmin() && p.status === 'unconfirmed' && p.amount < 0) acts = '<button class="btn small primary" type="button" onclick="event.stopPropagation();decidePayment(\'' + p.id + '\',\'confirmed\')">Approve refund</button><button class="btn small danger" type="button" onclick="event.stopPropagation();decidePayment(\'' + p.id + '\',\'rejected\')">Refuse</button>';
+  if (isAdmin() && p.status === 'unconfirmed' && p.amount > 0) acts = '<button class="btn small primary" type="button" onclick="event.stopPropagation();confirmPayment(\'' + p.id + '\')">Seen in bank</button><button class="btn small danger" type="button" onclick="event.stopPropagation();rejectPayment(\'' + p.id + '\')">Not received</button>';
+  else if (isAdmin() && p.status === 'unconfirmed' && p.amount < 0) acts = '<button class="btn small primary" type="button" onclick="event.stopPropagation();decidePayment(\'' + p.id + '\',\'confirmed\')">Approve refund</button><button class="btn small danger" type="button" onclick="event.stopPropagation();decidePayment(\'' + p.id + '\',\'rejected\')">Refuse</button>';
   else if (isAdmin() && p.status !== 'void' && p.status !== 'rejected') acts = '<button class="btn small" type="button" onclick="event.stopPropagation();voidPayment(\'' + p.id + '\')">Void</button>';
   var st = payPill(p) + (dup ? pill('Same ref as Room ' + (dup.roomNo || '?'), 'st-bad') : '');
   return recRow({
@@ -611,6 +613,41 @@ async function decidePayment(id, status) {
   b.commit().catch(fail);
   toast(status === 'confirmed' ? 'Refund approved' : 'Refund refused');
 }
+// Money in: the owner has seen it in the POS settlement or bank
+function confirmPayment(id) {
+  var p = findPayment(id); if (!p) return;
+  var b = db.batch();
+  b.update(db.collection('payments').doc(id), { status: 'confirmed', decidedBy: S.user.uid, decidedByName: meName(), decidedAt: Date.now() });
+  audit('payment_confirmed', 'payment', id, money(p.amount) + ' · Room ' + p.roomNo + ' · ' + p.guestName, b);
+  b.commit().catch(fail);
+  toast('Payment confirmed');
+}
+async function confirmAllPayments() {
+  var list = unconfirmedPayments(); if (!list.length) return;
+  var tot = sum(list, function (p) { return p.amount; }), pos = sum(list.filter(function (p) { return p.method === 'pos'; }), function (p) { return p.amount; });
+  if (!(await ask({ title: 'Confirm all ' + list.length + ' payments?', text: 'Total ' + money(tot) + ' (' + money(pos) + ' by POS, ' + money(tot - pos) + ' by transfer).\nOnly do this when the POS settlement and bank statement show every one of them.', ok: 'Confirm all ' + list.length, cancel: 'Check one by one' }))) return;
+  for (var i = 0; i < list.length; i += 200) {
+    var b = db.batch(), now = Date.now();
+    list.slice(i, i + 200).forEach(function (p) { b.update(db.collection('payments').doc(p.id), { status: 'confirmed', decidedBy: S.user.uid, decidedByName: meName(), decidedAt: now }); });
+    if (i === 0) audit('payments_confirmed', 'payment', '', list.length + ' payments · ' + money(tot), b);
+    b.commit().catch(fail);
+  }
+  toast(list.length + ' payments confirmed');
+}
+// Money in that never arrived: take it off the guest's account (like a void) and open an incident
+async function rejectPayment(id) {
+  var p = findPayment(id); if (!p) return;
+  var onStay = p.stayId && PAY_ON_STAY.indexOf(p.kind) >= 0;
+  if (!(await ask({ title: 'Not in the bank?', text: money(p.amount) + ' · ' + (PAY_KIND[p.kind] || p.kind) + ' · ' + (p.guestName || '') + ' · ref ' + (p.ref || '—') + ', recorded by ' + (p.byName || 'staff') + '.' + (onStay ? '\nThe amount goes back on the guest\'s balance.' : '') + '\nAn incident is opened so it is followed up.', ok: 'Mark not received', danger: true }))) return;
+  var b = db.batch(), s = p.stayId ? findStay(p.stayId) : null, a = p.amount;
+  b.update(db.collection('payments').doc(id), { status: 'rejected', decidedBy: S.user.uid, decidedByName: meName(), decidedAt: Date.now() });
+  if (onStay) b.update(db.collection('stays').doc(p.stayId), s && s.status === 'reserved' ? { paid: FV.increment(-a), deposit: FV.increment(-a) } : { paid: FV.increment(-a), balance: FV.increment(a) });
+  if (p.stayId && p.kind === 'caution') b.update(db.collection('stays').doc(p.stayId), { caution: FV.increment(-a) });
+  b.set(db.collection('incidents').doc(), Object.assign({ type: 'payment_rejected', title: money(a) + ' for Room ' + p.roomNo + ' (' + p.guestName + ') not in bank, ref ' + (p.ref || '—') + ', recorded by ' + (p.byName || 'staff'), stayId: p.stayId || '', paymentId: id, resolved: false }, stamp()));
+  audit('payment_rejected', 'payment', id, money(a) + ' · Room ' + p.roomNo + ' · ' + p.guestName, b);
+  b.commit().catch(fail);
+  toast('Marked as not received' + (onStay ? '. The guest now owes ' + money(a) + ' more.' : ''));
+}
 // Voiding a payment gives the money back to the guest's balance, so the stay shows what is really owed
 async function voidPayment(id) {
   var p = findPayment(id); if (!p) return;
@@ -626,21 +663,23 @@ async function voidPayment(id) {
 VIEWS.payments = {
   title: 'Payments',
   render: function () {
-    var tab = curTab('payments', 'all'), q = normRef(S.params.pq), all = allPayments(), wait = refundsWaiting();
+    var up = unconfirmedPayments(), tab = curTab('payments', up.length ? 'confirm' : 'all'), q = normRef(S.params.pq), all = allPayments(), wait = refundsWaiting();
     var t = todayStr(), todays = all.filter(function (p) { return dateStr(new Date(p.at)) === t && payCounts(p) && p.amount > 0; });
     var by = function (m) { return sum(todays.filter(function (p) { return p.method === m; }), function (p) { return p.amount; }); };
     var dups = all.filter(function (p) { return dupOf(p); });
-    var list = tab === 'refunds' ? all.filter(function (p) { return p.amount < 0; }) : tab === 'void' ? all.filter(function (p) { return p.status === 'void' || p.status === 'rejected'; }) : tab === 'dups' ? dups : all.filter(function (p) { return p.status !== 'void'; });
+    var list = tab === 'confirm' ? sortBy(up, function (p) { return p.at; }) : tab === 'refunds' ? all.filter(function (p) { return p.amount < 0; }) : tab === 'void' ? all.filter(function (p) { return p.status === 'void' || p.status === 'rejected'; }) : tab === 'dups' ? dups : all.filter(function (p) { return p.status !== 'void'; });
     if (q) list = list.filter(function (p) { return normRef(p.ref + ' ' + p.guestName + ' ' + p.roomNo).indexOf(q) >= 0; });
     var html = '<section class="grid-stats">' +
       stat('Recorded today', money(sum(todays, function (p) { return p.amount; })), todays.length + ' payment' + (todays.length === 1 ? '' : 's')) +
       stat('By POS today', money(by('pos')), money(by('transfer')) + ' by bank transfer') +
+      stat('Waiting for owner', up.length, up.length ? money(sum(up, function (p) { return p.amount; })) + ' to confirm' : 'All confirmed', up.length ? 'warn' : '') +
       stat('Refunds to approve', wait.length, wait.length ? money(-sum(wait, function (p) { return p.amount; })) : 'None waiting', wait.length ? 'warn' : '') +
       '</section>' +
-      tabs('payments', [['all', 'All'], ['refunds', 'Refunds' + (wait.length ? ' (' + wait.length + ' to approve)' : '')], ['dups', 'Same reference (' + dups.length + ')'], ['void', 'Void']]) +
+      tabs('payments', [['confirm', 'To confirm' + (up.length ? ' (' + up.length + ')' : '')], ['all', 'All'], ['refunds', 'Refunds' + (wait.length ? ' (' + wait.length + ' to approve)' : '')], ['dups', 'Same reference (' + dups.length + ')'], ['void', 'Void']]) +
       '<div class="row"><input class="search" id="pay-q" type="search" placeholder="Search reference, guest or room" value="' + esc(S.params.pq || '') + '" oninput="S.params.pq=this.value;render()"></div>' +
+      (tab === 'confirm' && up.length ? (isAdmin() ? '<div class="note">Match each payment to the POS settlement or your bank app by amount and reference. Tap "Seen in bank" only when the money is really there.</div>' + (up.length > 1 ? '<div class="row mb-2"><button class="btn" type="button" onclick="confirmAllPayments()">Confirm all ' + up.length + ' (' + money(sum(up, function (p) { return p.amount; })) + ')</button></div>' : '') : '<div class="note">Only the owner can confirm payments. Keep every POS slip until it is confirmed.</div>') : '') +
       (tab === 'dups' ? '<div class="note">These payments share a reference with another payment. One slip should pay once: check each pair against the POS report.</div>' : '');
-    if (!list.length) return html + (q ? emptyState('search', 'No payments match', 'Search by the reference on the slip, the guest\'s name or the room number.') : emptyState('payments', { refunds: 'No refunds', dups: 'No reference used twice', void: 'Nothing voided' }[tab] || 'No payments in the last 90 days', { refunds: 'Early check-out and deposit refunds show here. The owner approves each one.', dups: 'Good: every payment has its own slip reference.', void: 'Payments the owner voids show here with the reason.' }[tab] || 'Payments are recorded at check-in, extension, balance payment and sales.'));
+    if (!list.length) return html + (q ? emptyState('search', 'No payments match', 'Search by the reference on the slip, the guest\'s name or the room number.') : emptyState('payments', { confirm: 'Every payment is confirmed', refunds: 'No refunds', dups: 'No reference used twice', void: 'Nothing voided' }[tab] || 'No payments in the last 90 days', { confirm: 'Payments recorded by staff wait here until the owner matches them to the POS settlement or bank.', refunds: 'Early check-out and deposit refunds show here. The owner approves each one.', dups: 'Good: every payment has its own slip reference.', void: 'Payments the owner voids show here with the reason.' }[tab] || 'Payments are recorded at check-in, extension, balance payment and sales.'));
     return html + '<div class="card">' + list.slice(0, 200).map(paymentRow).join('') + '</div>';
   }
 };

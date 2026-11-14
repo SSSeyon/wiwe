@@ -1,4 +1,4 @@
-const APP_VERSION = '3.1.0';
+const APP_VERSION = '3.2.0';
 
 /* =========================================================
    Constants
@@ -658,8 +658,12 @@ function serviceDue(withinDays) { var lim = addDays(todayStr(), withinDays || 0)
 function openJobs() { return S.data.jobs.filter(function (j) { return ['open', 'assigned', 'in_progress'].indexOf(j.status) >= 0; }); }
 function mergeById(a, b) { var seen = {}; return a.concat(b).filter(function (x) { if (seen[x.id]) return false; seen[x.id] = 1; return true; }); }
 function pendingExpenses() { return mergeById(S.data.expenses, S.data.oldPending || []).filter(function (e) { return e.status === 'pending'; }); }
-// Payments are final as soon as they are recorded. Only refunds wait for the owner.
+// Money in recorded by staff is "unconfirmed" until the owner matches it to the POS settlement or bank
+// ("Seen in bank") or marks it "Not received". It counts towards the guest's balance meanwhile.
+// Refunds (money out) also wait for the owner. The owner's own records are confirmed straight away.
 function allPayments() { return mergeById(S.data.payments, S.data.oldUnconfirmed || []); }
+function payStatus() { return isAdmin() ? 'confirmed' : 'unconfirmed'; }
+function unconfirmedPayments() { return allPayments().filter(function (p) { return p.status === 'unconfirmed' && p.amount > 0; }); }
 function refundsWaiting() { return allPayments().filter(function (p) { return p.status === 'unconfirmed' && p.amount < 0; }); }
 function payCounts(p) { return p.status !== 'void' && p.status !== 'rejected' && !(p.status === 'unconfirmed' && p.amount < 0); }
 function allStays() { return mergeById(S.data.stays, S.data.debtors || []); }
@@ -676,6 +680,7 @@ function alerts() {
   var out = [];
   if (S.rulesOutdated) out.push({ lvl: 'bad', tag: 'SETUP', t: 'Security rules need updating', s: 'Some actions are being refused. Tap for the 1-minute fix.', go: 'openRulesHelp()' });
   S.data.stays.filter(isOverstay).forEach(function (s) { out.push({ lvl: 'bad', tag: 'OVERSTAY', t: 'Room ' + s.roomNo + ' past check-out', s: s.guestName + ' was due out ' + fmtDate(s.checkOutDate) + '. Extend or check out.', go: "openStay('" + s.id + "')" }); });
+  var up = unconfirmedPayments(); if (up.length) out.push({ lvl: 'alert', tag: 'PAYMENT', t: up.length + ' payment' + (up.length > 1 ? 's' : '') + ' not confirmed', s: money(sum(up, function (p) { return p.amount; })) + ' waiting to be matched to the POS settlement or bank', go: "go('payments',{tab:'confirm'})" });
   refundsWaiting().forEach(function (p) { out.push({ lvl: 'amber', tag: 'REFUND OK?', t: money(-p.amount) + ' refund for ' + p.guestName, s: (p.note || 'Room ' + p.roomNo) + ' · ' + (p.byName || ''), go: "go('payments',{tab:'refunds'})" }); });
   debtors().filter(function (s) { return s.status === 'checked_out'; }).forEach(function (s) { out.push({ lvl: 'alert', tag: 'OWES', t: s.guestName + ' left owing ' + money(s.balance), s: 'Room ' + s.roomNo + ' · checked out ' + fmtDate(s.checkOutDate), go: "openStay('" + s.id + "')" }); });  var t = todayStr();
   S.data.stays.filter(function (s) { return s.status === 'reserved' && (s.checkInDate < t || (s.checkInDate === t && Date.now() > atTime(t, s.arrivalTime || S.settings.checkInTime) + (S.settings.holdHours || 3) * 3600000)); }).forEach(function (s) { out.push({ lvl: 'amber', tag: 'NO-SHOW?', t: s.guestName + ' has not arrived', s: 'Room ' + s.roomNo + ' held since ' + fmtDate(s.checkInDate) + '. Check in or release it.', go: "openStay('" + s.id + "')" }); });
@@ -704,7 +709,7 @@ var NAV = [
   { id: 'board', label: 'Room board', desc: 'Every room and its status', roles: ['manager', 'frontdesk'] },
   { id: 'shift', label: 'Shift', desc: 'Start, close and hand over', roles: ['manager', 'frontdesk'] },
   { id: 'stays', label: 'Stays', desc: 'Guests, reservations, calendar', roles: ['manager', 'frontdesk'] },
-  { id: 'payments', label: 'Payments', desc: 'Every payment and refund', roles: ['manager', 'frontdesk'] },
+  { id: 'payments', label: 'Payments', desc: 'Confirm payments, refunds', roles: ['manager', 'frontdesk'] },
   { id: 'housekeeping', label: 'Housekeeping', desc: 'Cleaning tasks and laundry', roles: ['manager', 'frontdesk', 'housekeeping', 'maintenance'] },
   { id: 'maintenance', label: 'Maintenance', desc: 'Faults, repairs and assets', roles: ['manager', 'frontdesk', 'housekeeping', 'maintenance'] },
   { id: 'inventory', label: 'Inventory', desc: 'Supplies and items for sale', roles: ['manager', 'frontdesk'] },
@@ -717,10 +722,11 @@ var VIEWS = {}; // filled by front.js, ops.js, admin.js: { title, eyebrow?, rend
 function canSee(id) { var n = NAV.find(function (x) { return x.id === id; }); if (!n) return true; return has.apply(null, n.roles); }
 function defaultView() { return 'home'; }
 function go(view, params) { if (!VIEWS[view] || !canSee(view)) view = defaultView(); S.view = view; S.params = params || {}; if (params && params.tab) S.tab[view] = params.tab; if (view === 'reports') S.report = null; viewDirty = false; closeModal(); window.scrollTo(0, 0); try { history.replaceState(null, '', '#' + view); } catch (e) {} render(); }
-function navCounts() { return { shift: (typeof handoverWaiting === 'function' && handoverWaiting() && !myOpenShift()) ? 1 : 0, payments: isAdmin() ? refundsWaiting().length : 0, today: alerts().length, housekeeping: S.data.tasks.filter(function (t) { return t.status !== 'done' && (!has('manager', 'frontdesk') ? (!t.assignee || t.assignee === S.user.uid) : true); }).length, maintenance: openJobs().length }; }
+function navCounts() { return { shift: (typeof handoverWaiting === 'function' && handoverWaiting() && !myOpenShift()) ? 1 : 0, payments: isAdmin() ? refundsWaiting().length + unconfirmedPayments().length : 0, today: alerts().length, housekeeping: S.data.tasks.filter(function (t) { return t.status !== 'done' && (!has('manager', 'frontdesk') ? (!t.assignee || t.assignee === S.user.uid) : true); }).length, maintenance: openJobs().length }; }
 /* The jobs each role does most, one tap away (Home on big screens, the + button on phones) */
 function quickActions() {
   var a = [], desk = has('manager', 'frontdesk');
+  if (isAdmin() && unconfirmedPayments().length) a.push(['Confirm payments', 'payments', "go('payments',{tab:'confirm'})"]);
   if (isAdmin() && refundsWaiting().length) a.push(['Approve refunds', 'payments', "go('payments',{tab:'refunds'})"]);
   if (desk) { a.push(['Check in guest', 'stays', 'openCheckIn()']); a.push(['New reservation', 'calendar', 'openReservation()']); a.push(['Record sale', 'tag', 'openSell()']); }
   if (!desk && has('housekeeping')) a.push(['My cleaning tasks', 'housekeeping', "go('housekeeping')"]);

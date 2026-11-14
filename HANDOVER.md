@@ -373,3 +373,14 @@ Do this once, after publishing the rules:
 
 ### Not changed
 - Colour-only status (no per-status icons or patterns), as decided.
+
+## 24. v3.2.0: owner confirmation of payments is back
+
+This reverses the "No owner confirmation" part of section 22.
+
+- **Staff payments start as "Unconfirmed".** Check-in, reservation deposit, extension, balance, damage and item sale payments recorded by anyone except the owner are saved with `status: 'unconfirmed'` (`payStatus()` in js/core.js). The owner's own records are `confirmed` straight away. An unconfirmed payment still counts towards the guest's balance, the receipt and the shift totals.
+- **The owner confirms on Payments → To confirm** (the default tab when any wait): **Seen in bank** (`confirmPayment`) or **Not received** (`rejectPayment`). Not received sets `status: 'rejected'`, puts the amount back on the guest's balance (as a void does), takes a caution fee off the stay, and opens a `payment_rejected` incident. **Confirm all N** (`confirmAllPayments`) confirms every waiting payment after a dialog showing the total and the POS / transfer split, for when the day's POS settlement matches.
+- **Reminders:** a PAYMENT alert on Today / the room board, the Payments count badge, the Confirm payments quick action, "Waiting for owner" on Payments, "₦… confirmed" under Recorded today, "Still to confirm" in the WhatsApp daily summary, and in the email summary a line for payments not yet confirmed plus a "Confirmed by you" row. The hourly urgent-alerts email does not list them (it would send one every hour).
+- **Security rules:** staff can now only create money-in payments as `unconfirmed`; only the owner can confirm, mark not received or void. The rules publish job runs automatically when `firestore.rules` changes.
+- Payments recorded while v3.0 / v3.1 were live stay `confirmed`.
+- CSV export: the Status column reads confirmed / unconfirmed / refund waiting / refused / void.

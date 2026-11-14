@@ -31,7 +31,8 @@ const naira = n => (n < 0 ? '-₦' : '₦') + Math.round(Math.abs(n || 0)).toLoc
 const sum = (list, f) => list.reduce((a, x) => a + (Number(f(x)) || 0), 0);
 const docs = s => s.docs.map(d => ({ id: d.id, ...d.data() }));
 const range = (col, field) => db.collection(col).where(field, '>=', from).where(field, '<', to).get().then(docs);
-// A payment counts once it is recorded. Void and refused records don't; a refund counts only after the owner approves it.
+// A payment counts once it is recorded (confirmed or still to confirm). Void and not-received records don't;
+// a refund counts only after the owner approves it.
 const counts = p => p.status !== 'void' && p.status !== 'rejected' && !(p.status === 'unconfirmed' && p.amount < 0);
 
 const [pays, exps, ins, outs, rooms, incidents, items, jobs, sales, settings, waiting, pendingExp, inHouse, owing] = await Promise.all([
@@ -55,12 +56,14 @@ const itemSales = sales.filter(m => m.type === 'sale');
 const overstays = inHouse.filter(s => s.checkOutDate < todayLagos);
 const low = items.filter(i => !i.archived && Number(i.qty) <= Number(i.reorderLevel || 0));
 const refunds = waiting.filter(p => p.amount < 0);
+const toConfirm = waiting.filter(p => p.amount > 0);
 const debtors = owing.filter(s => s.status === 'checked_in' || s.status === 'checked_out');
 const leftOwing = debtors.filter(s => s.status === 'checked_out');
 
 const flags = [];
 overstays.forEach(s => flags.push(`Overstay: Room ${s.roomNo} (${s.guestName}), was due out ${s.checkOutDate} ${checkOutTime}`));
 leftOwing.forEach(s => flags.push(`${s.guestName} (Room ${s.roomNo}) checked out owing ${naira(s.balance)}`));
+if (toConfirm.length) flags.push(`${toConfirm.length} payment(s) not yet confirmed: ${naira(sum(toConfirm, p => p.amount))}. Match them to the POS settlement.`);
 if (refunds.length) flags.push(`${refunds.length} refund(s) waiting for your approval: ${naira(-sum(refunds, p => p.amount))}`);
 incidents.slice(0, 8).forEach(i => flags.push(i.title));
 if (pendingExp.length) flags.push(`${pendingExp.length} expense(s) waiting for your approval`);
@@ -71,6 +74,7 @@ const rows = [
   ['Money recorded', `${naira(sum(paid, p => p.amount))} (${paid.length} payments)`],
   ['By POS', naira(by('pos'))],
   ['By bank transfer', naira(by('transfer'))],
+  ['Confirmed by you', naira(sum(paid.filter(p => p.status === 'confirmed'), p => p.amount))],
   ['Item sales', naira(sum(itemSales, m => m.total))],
   ['Spent', naira(sum(spent, e => e.amount))],
   ['Guests owing', `${naira(sum(debtors, s => s.balance))} (${debtors.length})`],

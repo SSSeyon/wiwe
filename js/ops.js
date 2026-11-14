@@ -511,7 +511,7 @@ async function saveSell() {
   b.update(db.collection('items').doc(it.id), { qty: FV.increment(-q) });
   b.set(db.collection('moves').doc(), Object.assign(mv, stamp()));
   if (pay === 'bill') b.update(db.collection('stays').doc(stay.id), { extras: FV.increment(total), balance: FV.increment(total) });
-  else b.set(db.collection('payments').doc(), Object.assign({ stayId: stay ? stay.id : '', roomNo: stay ? stay.roomNo : '', guestName: stay ? stay.guestName : 'Walk-in', amount: total, kind: 'sale', method: pay, sender: '', ref: val('sl-ref'), photos: [], status: 'confirmed', note: it.name + ' × ' + q }, stamp()));
+  else b.set(db.collection('payments').doc(), Object.assign({ stayId: stay ? stay.id : '', roomNo: stay ? stay.roomNo : '', guestName: stay ? stay.guestName : 'Walk-in', amount: total, kind: 'sale', method: pay, sender: '', ref: val('sl-ref'), photos: [], status: payStatus(), note: it.name + ' × ' + q }, stamp()));
   audit('item_sold', 'item', it.id, it.name + ' × ' + q + ' · ' + money(total) + (stay ? ' · Room ' + stay.roomNo : '') + (pay === 'bill' ? ' · on room bill' : ''), b);
   b.commit().catch(fail);
   closeModal(); toast('Sold: ' + it.name + ' × ' + q + (pay === 'bill' ? ' (added to the room bill)' : ''));

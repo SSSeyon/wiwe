@@ -116,13 +116,13 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // A payment is final when recorded. Staff record money in; a refund (money out) waits
-    // for the owner as "unconfirmed". Only the owner changes a payment afterwards (void, approve).
+    // Staff record money in as "unconfirmed"; only the owner confirms it ("seen in bank"), marks it
+    // not received, or voids it. A refund (money out) also waits for the owner as "unconfirmed".
     match /payments/{id} {
       allow read: if desk();
       allow create: if desk() && stampedByMe() && request.resource.data.amount is number
         && (admin()
-            || (request.resource.data.amount > 0 && request.resource.data.status in ['confirmed', 'unconfirmed'])
+            || (request.resource.data.amount > 0 && request.resource.data.status == 'unconfirmed')
             || (request.resource.data.amount < 0 && request.resource.data.status == 'unconfirmed')
             || (request.resource.data.kind == 'refund' && anyRole(['manager'])));
       allow update: if admin();
