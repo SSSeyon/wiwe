@@ -396,3 +396,13 @@ This reverses the "No owner confirmation" part of section 22.
 - **Stays list:** grouped rooms show "group" next to the room number.
 - Cancel, no-show, extend and check-out still act on one room at a time.
 - No security-rule change was needed.
+
+## 26. v3.4.0: receipts as a picture or PDF, and a receipt designer
+
+- **New file js/receipt.js** (added to index.html and the service worker's file list). The receipt window code moved here from js/front.js; the figures still come from `rcptSums()` / `rcptEnd()` / `receiptText()` in front.js.
+- **The receipt is drawn on a canvas** (`rcptPaint()`, 420 units wide, saved at 3× for sharp text) from `rcptModel()`. The window shows the picture itself, so what staff see is what the guest gets. The PDF (`rcptPdf()`) is one page, 105 mm wide, holding that picture as a JPEG. It is written by hand, so no PDF library is loaded.
+- **Sending:** "Send picture" / "Send PDF" opens the phone's share menu (`navigator.share` with the file). Staff pick WhatsApp, then the guest. The files are made when the window opens, because a share menu only opens straight from a tap. Where a device can't share files (some laptop browsers), the file is downloaded and a dialog offers to open the guest's WhatsApp chat so it can be attached. "Save" downloads the file; "Send as text" is the old WhatsApp text message; "Print" prints the picture. Sending is written to the activity log (`receipt_sent`).
+- **Admin settings → Receipt** (`adminReceipt()`): send as picture or PDF by default; layout (Classic, Colour header, Minimal); colour (swatches or any colour); lettering (Modern, Classic serif, Typewriter); logo (Wiwe logo, your own picture, or none), with an option to recolour it; business name, address, phone and thank-you line; and switches for the staff name and the POS / transfer references. A live preview with a made-up guest updates as you change things.
+- **Stored in** `settings/general.receipt` (only the owner can write settings, so no rule change). An uploaded logo is shrunk to 480 px and kept as a data URL in that document (about 270 KB at most).
+- **Recolouring a logo** turns dark parts into the chosen colour and light parts see-through. That suits one-colour logos like Wiwe's; a full-colour logo should be used without it. On the Colour header layout a dark colour always turns the logo white.
+- Tested in the local mock only (Chrome): picture, PDF (opens in Chrome's PDF viewer), group receipts, the share call, the laptop fallback, a custom logo, and the designer on phone and laptop widths. Not yet tried on a real phone's share menu.

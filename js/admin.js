@@ -200,10 +200,11 @@ VIEWS.admin = {
     if (adminLocked()) return pinScreen();
     S.adminUntil = Date.now() + 10 * 60000;
     var tab = curTab('admin', 'general');
-    var html = tabs('admin', [['general', 'General'], ['rooms', 'Rooms and rates'], ['staff', 'Staff'], ['security', 'Codes'], ['audit', 'Activity log'], ['data', 'Backup']]);
+    var html = tabs('admin', [['general', 'General'], ['rooms', 'Rooms and rates'], ['staff', 'Staff'], ['receipt', 'Receipt'], ['security', 'Codes'], ['audit', 'Activity log'], ['data', 'Backup']]);
     if (tab === 'general') html += adminGeneral();
     if (tab === 'rooms') html += adminRooms();
     if (tab === 'staff') html += adminStaff();
+    if (tab === 'receipt') { html += adminReceipt(); setTimeout(rdPreview, 0); }
     if (tab === 'security') html += adminSecurity();
     if (tab === 'audit') { html += '<div class="card" id="audit-box">' + skeleton(8) + '</div>'; setTimeout(loadAudit, 0); }
     if (tab === 'data') html += '<div class="card"><h2>Backup</h2><p class="muted">Downloads everything (except photos) as one JSON file. Do this monthly and keep it safe.</p><button class="btn primary" type="button" onclick="backup()">Download backup</button></div>';

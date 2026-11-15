@@ -453,38 +453,7 @@ function receiptText(s) {
   L.push('', 'Issued ' + fmtDT(Date.now()) + ' by ' + meName());
   return L.join('\n');
 }
-/* The receipt as a printable page with the logo; the WhatsApp / copy version is receiptText() */
-function receiptHtml(s) {
-  var ss = receiptStays(s), m = rcptSums(ss);
-  var lines = ss.map(function (x) { return '<tr><td>Room ' + esc(x.roomNo) + ' · ' + x.nights + ' night' + (x.nights > 1 ? 's' : '') + (stayRate(x) ? ' × ' + money(stayRate(x)) : '') + '</td><td class="r">' + money(stayRate(x) * (x.nights || 0)) + '</td></tr>'; }).join('') +
-    (m.disc ? '<tr class="sub"><td>Discount</td><td class="r">−' + money(m.disc) + '</td></tr>' : '') +
-    (m.extras ? '<tr><td>Items added to the bill</td><td class="r">' + money(m.extras) + '</td></tr>' : '') +
-    '<tr class="tot"><td>' + (m.res ? 'Stay cost' : 'Total') + '</td><td class="r">' + money(m.bill) + '</td></tr>';
-  var paid = m.pays.length ? '<table><thead><tr><th>Payment</th><th class="r">Amount</th></tr></thead><tbody>' + m.pays.map(function (p) {
-    return '<tr><td>' + esc(fmtDate(p.at) + ' · ' + (PAY_KIND[p.kind] || p.kind) + (m.multi ? ' · Room ' + p.roomNo : '')) + '<br><span class="rcpt-no">' + esc(dots([PAY_LABEL[p.method] || p.method, p.ref ? 'ref ' + p.ref : ''])) + '</span></td><td class="r">' + money(p.amount) + '</td></tr>';
-  }).join('') + '</tbody></table>' : '';
-  var first = ss.reduce(function (a, x) { return x.checkInDate < a ? x.checkInDate : a; }, ss[0].checkInDate);
-  return '<div class="rcpt" id="rcpt"><div class="rcpt-head"><img src="img/logo.png" alt="' + esc(S.settings.businessName || 'Wiwe Apartments') + '"><span class="rcpt-title">' + (m.res ? 'Booking confirmation' : 'Receipt') + '</span><span class="rcpt-no">No. ' + esc(s.id.slice(-6).toUpperCase()) + ' · ' + esc(fmtDT(Date.now())) + '</span></div>' +
-    '<dl class="rcpt-meta"><dt>Guest</dt><dd>' + esc(s.guestName) + '</dd><dt>' + (m.multi ? 'Rooms' : 'Room') + '</dt><dd>' + esc(m.multi ? ss.map(function (x) { return x.roomNo; }).join(', ') : s.roomNo + (s.roomTypeName ? ' · ' + s.roomTypeName : '')) + '</dd>' +
-    '<dt>Arrival</dt><dd>' + esc(fmtDate(first)) + '</dd><dt>Departure</dt><dd>' + esc(fmtDate(m.last) + ', by ' + S.settings.checkOutTime) + '</dd></dl>' +
-    '<table><tbody>' + lines + '</tbody></table>' + paid +
-    '<div class="rcpt-note"><strong>' + esc(rcptEnd(m)) + '</strong>' + (m.caution ? '<br>Refundable caution fee held: ' + money(m.caution) : '') + '</div>' +
-    '<div class="rcpt-foot">' + esc(S.settings.businessName || 'Wiwe Apartments') + ' · Sowhe, Badagry<br>Issued by ' + esc(meName()) + '</div></div>';
-}function openReceipt(id) {
-  var s = findStay(id); if (!s) return;
-  var text = receiptText(s), phone = String(s.phone || '').replace(/\D/g, '').replace(/^0/, '234');
-  S.receipt = text.replace(/\*/g, '');
-  openModal('Receipt · ' + s.guestName, receiptHtml(s) +
-    '<div class="row no-print"><a class="btn primary" target="_blank" rel="noopener" href="https://wa.me/' + esc(phone) + '?text=' + encodeURIComponent(text) + '">Send on WhatsApp</a>' +
-    '<button class="btn" type="button" onclick="printReceipt()">' + icon('printer', 16) + 'Print</button><button class="btn" type="button" onclick="copyReceipt()">Copy text</button>' +
-    '<button class="btn" type="button" onclick="openStay(\'' + s.id + '\')">Back</button></div>');
-}
-// Prints only the receipt, not the page behind it
-function printReceipt() {
-  document.body.classList.add('print-modal');
-  var done = function () { document.body.classList.remove('print-modal'); window.removeEventListener('afterprint', done); };
-  window.addEventListener('afterprint', done); window.print(); setTimeout(done, 1500);
-}function copyReceipt() { (navigator.clipboard ? navigator.clipboard.writeText(S.receipt || '') : Promise.reject()).then(function () { toast('Copied'); }).catch(function () { toast('Could not copy', true); }); }function info(label, value) { return '<div class="field">' + esc(label) + '<span class="static">' + esc(value == null || value === '' ? '—' : value) + '</span></div>'; }
+function info(label, value) { return '<div class="field">' + esc(label) + '<span class="static">' + esc(value == null || value === '' ? '—' : value) + '</span></div>'; }
 async function endReservation(id, status) {
   var s = findStay(id), dep = s.paid || 0, ns = status === 'no_show';
   if (!(await ask({ title: ns ? 'Mark as a no-show?' : 'Cancel the reservation?', text: s.guestName + ' · Room ' + s.roomNo + ' · ' + fmtDate(s.checkInDate) + '. The room becomes free for these dates.', ok: ns ? 'Mark no-show' : 'Cancel reservation', cancel: 'Keep it', danger: true }))) return;
