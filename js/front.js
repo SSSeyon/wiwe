@@ -134,7 +134,15 @@ function openCheckIn(roomId, reservationId) {
   var free = roomsSorted().filter(function (r) { return r.status === 'ready' || r.id === roomId; });
   if (!free.length) return toast('No rooms are Ready. Rooms must be cleaned and inspected first.', true);
   var room = byId(S.data.rooms, roomId) || byId(S.data.rooms, rv && rv.roomId) || free[0];
-  S.form = { rvId: rv ? rv.id : '', rvPaid: rv ? (rv.paid || 0) : 0, idPhotos: (rv && rv.idPhotos) || [], payPhotos: [] };
+  // A group booking: the other rooms reserved with this one are ticked, if they are Ready
+  var grpRv = {}, notReady = [];
+  if (rv && rv.groupId) S.data.stays.forEach(function (x) {
+    if (x.groupId !== rv.groupId || x.id === rv.id || x.status !== 'reserved') return;
+    var xr = byId(S.data.rooms, x.roomId);
+    if (xr && xr.status === 'ready') grpRv[x.roomId] = x; else notReady.push(x.roomNo);
+  });
+  S.form = { rvId: rv ? rv.id : '', rvPaid: rv ? (rv.paid || 0) : 0, idPhotos: (rv && rv.idPhotos) || [], payPhotos: [], groupId: (rv && rv.groupId) || '', groupRv: grpRv };
+  var more = free.map(function (r) { return '<label class="check"><input type="checkbox" name="ci-x" value="' + r.id + '"' + (grpRv[r.id] ? ' checked' : '') + ' onchange="ciCalc()"><span><strong>' + esc(r.number) + '</strong> ' + esc(roomType(r).name) + '<span class="muted">' + money(Number(roomType(r).rate) || 0) + (grpRv[r.id] ? ' · in this booking' : '') + '</span></span></label>'; }).join('');
   var st = S.settings, nights = rv ? rv.nights : 1, needId = !!st.requireId;
   var b = '<form class="form" onsubmit="event.preventDefault();saveCheckIn()">' +
     '<fieldset class="group"><legend>1 · Guest</legend><div class="fields">' +
@@ -150,10 +158,12 @@ function openCheckIn(roomId, reservationId) {
     '<div class="full" id="ci-lookup" class="span-all"></div></div></fieldset>' +
     '<fieldset class="group"><legend>2 · Stay</legend><div class="fields">' +
     field('Room', '<select id="ci-room" onchange="ciCalc()">' + free.map(function (r) { return '<option value="' + r.id + '"' + (r.id === room.id ? ' selected' : '') + '>' + esc(r.number + ' · ' + roomType(r).name) + '</option>'; }).join('') + '</select>') +
+    '<details class="span-all more-rooms"' + (Object.keys(grpRv).length ? ' open' : '') + '><summary>More rooms for this guest</summary><div class="room-picks">' + (more || '<span class="muted">No other room is Ready.</span>') + '</div>' +
+    (notReady.length ? '<div class="note warn">Room ' + esc(notReady.join(', ')) + ' in this booking ' + (notReady.length > 1 ? 'are' : 'is') + ' not Ready yet. Check ' + (notReady.length > 1 ? 'them' : 'it') + ' in from ' + (notReady.length > 1 ? 'their own reservations' : 'its own reservation') + ' when ready.</div>' : '') + '</details>' +
     field('Nights', input('ci-nights', nights, 'type="number" min="1" required oninput="ciCalc()"')) +
     '<div class="field">Check-out<span class="static" id="ci-out"></span></div>' +
     '<div class="field">Rate per night<span class="static" id="ci-rate"></span></div>' +
-    field('Discount (₦)', input('ci-disc', '', 'inputmode="numeric" oninput="ciCalc()"'), '', isAdmin() ? '' : 'Needs a reason. The owner will approve it.') +
+    field('Discount (₦)', input('ci-disc', '', 'inputmode="numeric" oninput="ciCalc()"'), '', (isAdmin() ? '' : 'Needs a reason. The owner will approve it. ') + 'With several rooms, it comes off the whole booking.') +
     field('Discount reason', input('ci-discr', '', '')) +
     '</div></fieldset>' +
     '<fieldset class="group"><legend>3 · Payment</legend>' +
@@ -166,7 +176,7 @@ function openCheckIn(roomId, reservationId) {
     '<fieldset class="group"><legend>4 · Caution fee and key card</legend><div class="fields">' +
     (st.cautionEnabled ? field('Caution fee (₦, refundable)', input('ci-caution', st.cautionAmount || '', 'inputmode="numeric" oninput="ciCalc()"')) + field("Guest's bank account for refund", input('ci-cacct', '', ''), '', 'Bank, account number and name') : '') +
     field('Key card number issued', input('ci-card', '', 'required')) +
-    '</div><label class="check"><input type="checkbox" id="ci-agree" required>Guest has read the house rules and agrees that missing or damaged items are paid for' + (st.cautionEnabled ? ' from the caution fee' : '') + '.</label></fieldset>' +
+    '</div><div class="fields" id="ci-xcards"></div><label class="check"><input type="checkbox" id="ci-agree" required>Guest has read the house rules and agrees that missing or damaged items are paid for' + (st.cautionEnabled ? ' from the caution fee' : '') + '.</label></fieldset>' +
     '<div class="card step-final" id="ci-sum"></div>' +
     '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary" id="ci-save">Complete check-in</button></div></form>';
   openModal(rv ? 'Check in ' + rv.guestName : 'Check in guest', b, true);
@@ -192,70 +202,105 @@ function openCheckIn(roomId, reservationId) {
   box.innerHTML = '<div class="note ' + (issues.length ? 'bad' : 'ok') + '">Returning guest: ' + prev.length + ' previous stay' + (prev.length > 1 ? 's' : '') + ' (last: Room ' + esc(prev[0].roomNo) + ', ' + fmtDate(prev[0].checkInDate) + '). ' + (issues.length ? issues.length + ' stay(s) had missing items or damage.' : 'No damage or issues recorded.') + '</div>';
   if (!val('ci-name')) $('ci-name').value = prev[0].guestName;
 }
+// The extra rooms ticked under "More rooms for this guest" (never the main room)
+function ciExtras() {
+  var main = val('ci-room');
+  return Array.prototype.slice.call(document.querySelectorAll('input[name="ci-x"]:checked')).map(function (i) { return i.value; })
+    .filter(function (id) { return id !== main; }).map(function (id) { return byId(S.data.rooms, id); }).filter(Boolean);
+}
+// The reservation a room is being checked in from: the main one, or another room of the same group booking
+function ciRvOf(r, i) { return i === 0 ? (S.form.rvId ? findStay(S.form.rvId) : null) : ((S.form.groupRv || {})[r.id] || null); }
 function ciCalc() {
   var r = byId(S.data.rooms, val('ci-room')); if (!r) return;
-  var rate = Number(roomType(r).rate) || 0, n = Math.max(1, num(val('ci-nights'))), d = num(val('ci-disc')), t = todayStr();
-  var out = addDays(t, n), total = Math.max(0, rate * n - d), caution = S.settings.cautionEnabled ? num(val('ci-caution')) : 0, prior = S.form.rvPaid || 0;
-  var due = Math.max(0, total - prior) + caution, clash = overlaps(r.id, t, out, S.form.rvId);
+  document.querySelectorAll('input[name="ci-x"]').forEach(function (i) { var me = i.value === r.id; if (me) i.checked = false; i.closest('label').classList.toggle('hidden', me); });
+  var rooms = [r].concat(ciExtras()), rate = Number(roomType(r).rate) || 0, n = Math.max(1, num(val('ci-nights'))), d = num(val('ci-disc')), t = todayStr();
+  var out = addDays(t, n), caution = S.settings.cautionEnabled ? num(val('ci-caution')) : 0, cost = 0, prior = 0, lines = '', clashes = '', noRate = [];
+  rooms.forEach(function (x, i) {
+    var xr = Number(roomType(x).rate) || 0, rv = ciRvOf(x, i), c = overlaps(x.id, t, out, rv ? rv.id : '');
+    cost += xr * n; prior += rv ? (rv.paid || 0) : 0; if (!xr) noRate.push(x.number);
+    lines += '<div class="row between"><span>Room ' + esc(x.number) + ' · ' + n + ' night' + (n > 1 ? 's' : '') + '</span><span class="money">' + money(xr * n) + '</span></div>';
+    if (c) clashes += '<div class="note bad">Room ' + esc(x.number) + ' is booked for ' + esc(c.guestName) + ' from ' + fmtDate(c.checkInDate) + '. Pick another room or fewer nights.</div>';
+  });
+  var total = Math.max(0, cost - d), due = Math.max(0, total - prior) + caution;
   $('ci-out').textContent = fmtDate(out) + ', ' + S.settings.checkOutTime;
-  $('ci-rate').textContent = money(rate) + (isAdmin() ? '' : ' (set by admin)');
+  $('ci-rate').textContent = money(rate) + (rooms.length > 1 ? ' (Room ' + r.number + ')' : '') + (isAdmin() ? '' : ' (set by admin)');
   prefillAmount('ci-amount', due);
   var sb = $('sb-amt'); if (sb) sb.textContent = money(due);
-  $('ci-sum').innerHTML = '<div class="row between"><span>Room ' + esc(r.number) + ' · ' + n + ' night' + (n > 1 ? 's' : '') + '</span><span class="money">' + money(rate * n) + '</span></div>' +
+  // one key card box per extra room, keeping what was already typed
+  var xc = $('ci-xcards'), sig = rooms.slice(1).map(function (x) { return x.id; }).join(',');
+  if (xc && xc.dataset.sig !== sig) {
+    var keep = {}; xc.querySelectorAll('input').forEach(function (i) { keep[i.id] = i.value; });
+    xc.innerHTML = rooms.slice(1).map(function (x) { var id = 'ci-xcard-' + x.id; return field('Key card for Room ' + x.number, input(id, keep[id] || '', 'required')); }).join('');
+    xc.dataset.sig = sig;
+  }
+  $('ci-sum').innerHTML = lines +
     (d ? '<div class="row between"><span>Discount</span><span class="money">-' + money(d) + '</span></div>' : '') +
     (prior ? '<div class="row between"><span>Deposit already paid</span><span class="money">-' + money(prior) + '</span></div>' : '') +
     (caution ? '<div class="row between"><span>Caution fee (refundable)</span><span class="money">' + money(caution) + '</span></div>' : '') +
-    '<div class="row between strong total-row"><span>Collect now</span><span class="money">' + money(due) + '</span></div>' +
-    (clash ? '<div class="note bad">Room ' + esc(r.number) + ' is booked for ' + esc(clash.guestName) + ' from ' + fmtDate(clash.checkInDate) + '. Pick another room or fewer nights.</div>' : '') +
-    (rate === 0 ? '<div class="note warn">This room type has no rate yet. The owner sets rates in Admin settings → Rooms.</div>' : '');
-}
-async function saveCheckIn() {
+    '<div class="row between strong total-row"><span>Collect now' + (rooms.length > 1 ? ' · ' + rooms.length + ' rooms' : '') + '</span><span class="money">' + money(due) + '</span></div>' +
+    clashes +
+    (noRate.length ? '<div class="note warn">Room ' + esc(noRate.join(', ')) + ': this room type has no rate yet. The owner sets rates in Admin settings → Rooms.</div>' : '');
+}async function saveCheckIn() {
   var r = byId(S.data.rooms, val('ci-room'));
   if (!r) return toast('Pick a room', true);
-  if (r.status !== 'ready') return toast('Room ' + r.number + ' is not Ready', true);
-  var type = roomType(r), rate = Number(type.rate) || 0, n = Math.max(1, num(val('ci-nights'))), t = todayStr();
-  // A walk-in must never land on top of someone else's booking
-  var clash = overlaps(r.id, t, addDays(t, n), S.form.rvId);
-  if (clash) return toast('Room ' + r.number + ' is booked for ' + clash.guestName + ' from ' + fmtDate(clash.checkInDate) + '. Pick another room or fewer nights.', true);
+  var rooms = [r].concat(ciExtras()), n = Math.max(1, num(val('ci-nights'))), t = todayStr();
+  for (var k = 0; k < rooms.length; k++) {
+    var x = rooms[k], xrv = ciRvOf(x, k);
+    if (x.status !== 'ready') return toast('Room ' + x.number + ' is not Ready', true);
+    // A walk-in must never land on top of someone else's booking
+    var clash = overlaps(x.id, t, addDays(t, n), xrv ? xrv.id : '');
+    if (clash) return toast('Room ' + x.number + ' is booked for ' + clash.guestName + ' from ' + fmtDate(clash.checkInDate) + '. Pick another room or fewer nights.', true);
+    if (k > 0 && !val('ci-xcard-' + x.id)) return toast('Enter the key card for Room ' + x.number, true);
+  }
   if (S.settings.requireId && !val('ci-idno') && !(S.form.idPhotos || []).length) return toast('Enter the ID number or add a photo of the ID', true);
   var method = radio('ci-method'), amount = num(val('ci-amount')), ref = val('ci-ref');
   if (amount > 0 && !ref) return toast('Enter the reference from the POS slip', true);
   var disc = num(val('ci-disc')), discR = val('ci-discr');
   if (disc > 0 && !discR) return toast('Give a reason for the discount', true);
-  var total = Math.max(0, rate * n - disc), caution = S.settings.cautionEnabled ? num(val('ci-caution')) : 0, prior = S.form.rvPaid || 0;
-  var owed = Math.max(0, total - prior), roomPaid = Math.min(amount, owed), cautionPaid = Math.min(caution, Math.max(0, amount - owed)), over = amount - roomPaid - cautionPaid;
+  // The discount sits on the main room; each room keeps its own bill
+  var items = rooms.map(function (x, i) {
+    var type = roomType(x), rate = Number(type.rate) || 0, rv = ciRvOf(x, i), tot = Math.max(0, rate * n - (i === 0 ? disc : 0)), pr = rv ? (rv.paid || 0) : 0;
+    return { r: x, type: type, rate: rate, rv: rv, total: tot, prior: pr, owed: Math.max(0, tot - pr) };
+  });
+  var caution = S.settings.cautionEnabled ? num(val('ci-caution')) : 0, prior = sum(items, function (i) { return i.prior; });
+  var owed = sum(items, function (i) { return i.owed; }), roomPaid = Math.min(amount, owed), cautionPaid = Math.min(caution, Math.max(0, amount - owed)), over = amount - roomPaid - cautionPaid;
   if (over > 0) return toast('That is ' + money(over) + ' more than the amount due. Check the amount.', true);
   // A wrong pre-filled amount must not slip through: anything short of the room price is confirmed as a part payment
-  if (amount < owed) { if (!(await ask({ title: 'Part payment?', text: 'Received ' + money(amount) + ' but ' + money(owed) + ' is due for the room.\n' + money(owed - amount) + ' will be recorded as still owed' + (caution ? ', and no caution fee is held' : '') + '.', ok: 'Save as part payment', cancel: 'Fix the amount' }))) return; }
-  else if (caution && cautionPaid < caution && !(await ask({ title: 'Caution fee short', text: 'The room is paid, but only ' + money(cautionPaid) + ' of the ' + money(caution) + ' caution fee was received.', ok: 'Check in anyway', cancel: 'Fix the amount' }))) return;
+  if (amount < owed) { if (!(await ask({ title: 'Part payment?', text: 'Received ' + money(amount) + ' but ' + money(owed) + ' is due for the room' + (items.length > 1 ? 's' : '') + '.\n' + money(owed - amount) + ' will be recorded as still owed' + (caution ? ', and no caution fee is held' : '') + '.', ok: 'Save as part payment', cancel: 'Fix the amount' }))) return; }
+  else if (caution && cautionPaid < caution && !(await ask({ title: 'Caution fee short', text: 'The room' + (items.length > 1 ? 's are' : ' is') + ' paid, but only ' + money(cautionPaid) + ' of the ' + money(caution) + ' caution fee was received.', ok: 'Check in anyway', cancel: 'Fix the amount' }))) return;
   if (amount > 0 && !(await refOk(ref, S.form.rvId))) return;
   rememberPayMethod(method);
   if ($('ci-save')) $('ci-save').disabled = true;
   if ($('sb-next')) $('sb-next').disabled = true;
-  var now = Date.now(), b = db.batch();
-  var sref = S.form.rvId ? db.collection('stays').doc(S.form.rvId) : db.collection('stays').doc();
-  var stay = {
-    roomId: r.id, roomNo: r.number, roomTypeName: type.name,
-    guestName: val('ci-name'), phone: val('ci-phone'), address: val('ci-addr'), guests: Math.max(1, num(val('ci-guests'))), vehicle: val('ci-car'), source: val('ci-source') || 'walkin',
-    idType: val('ci-idtype'), idNumber: val('ci-idno'), idPhotos: S.form.idPhotos,
-    checkInDate: t, checkOutDate: addDays(t, n), nights: n, rate: rate,
-    discount: disc, discountReason: discR, discountStatus: disc > 0 ? (isAdmin() ? 'approved' : 'pending') : 'none',
-    total: total, paid: prior + roomPaid, balance: total - prior - roomPaid,
-    caution: cautionPaid, cautionAccount: val('ci-cacct') || '', cautionStatus: cautionPaid ? 'held' : 'none',
-    cardNo: val('ci-card'), cardReturned: false,
-    status: 'checked_in', checkedInAt: now, checkedInBy: S.user.uid, checkedInByName: meName()
-  };
-  if (!S.form.rvId) Object.assign(stay, { createdAt: now, by: S.user.uid, byName: meName() });
-  b.set(sref, stay, { merge: true });
-  var pay = { stayId: sref.id, roomNo: r.number, guestName: stay.guestName, method: method, sender: '', ref: ref, photos: S.form.payPhotos, status: payStatus() };
-  if (roomPaid > 0) b.set(db.collection('payments').doc(), Object.assign({ amount: roomPaid, kind: 'room' }, pay, stamp()));
-  if (cautionPaid > 0) b.set(db.collection('payments').doc(), Object.assign({ amount: cautionPaid, kind: 'caution' }, pay, stamp()));
-  b.update(db.collection('rooms').doc(r.id), { status: 'occupied', currentStayId: sref.id });
-  audit('check_in', 'stay', sref.id, 'Room ' + r.number + ' · ' + stay.guestName + ' · ' + n + ' nights · paid ' + money(amount) + (prior ? ' · deposit ' + money(prior) : ''), b);
+  var now = Date.now(), b = db.batch(), name = val('ci-name'), left = roomPaid, firstId = '';
+  var groupId = S.form.groupId || (items.length > 1 ? db.collection('stays').doc().id : '');
+  items.forEach(function (it, i) {
+    var paidNow = Math.min(it.owed, left); left -= paidNow;
+    var sref = it.rv ? db.collection('stays').doc(it.rv.id) : db.collection('stays').doc(); if (!i) firstId = sref.id;
+    var stay = {
+      roomId: it.r.id, roomNo: it.r.number, roomTypeName: it.type.name,
+      guestName: name, phone: val('ci-phone'), address: val('ci-addr'), guests: Math.max(1, num(val('ci-guests'))), vehicle: val('ci-car'), source: val('ci-source') || 'walkin',
+      idType: val('ci-idtype'), idNumber: val('ci-idno'), idPhotos: S.form.idPhotos,
+      checkInDate: t, checkOutDate: addDays(t, n), nights: n, rate: it.rate,
+      discount: i ? 0 : disc, discountReason: i ? '' : discR, discountStatus: !i && disc > 0 ? (isAdmin() ? 'approved' : 'pending') : 'none',
+      total: it.total, paid: it.prior + paidNow, balance: it.total - it.prior - paidNow,
+      caution: i ? 0 : cautionPaid, cautionAccount: i ? '' : (val('ci-cacct') || ''), cautionStatus: !i && cautionPaid ? 'held' : 'none',
+      cardNo: i ? val('ci-xcard-' + it.r.id) : val('ci-card'), cardReturned: false,
+      status: 'checked_in', checkedInAt: now, checkedInBy: S.user.uid, checkedInByName: meName()
+    };
+    if (groupId) Object.assign(stay, { groupId: groupId, groupName: name });
+    if (!it.rv) Object.assign(stay, { createdAt: now, by: S.user.uid, byName: meName() });
+    b.set(sref, stay, { merge: true });
+    var pay = { stayId: sref.id, roomNo: it.r.number, guestName: name, method: method, sender: '', ref: ref, photos: S.form.payPhotos, status: payStatus(), groupId: groupId };
+    if (paidNow > 0) b.set(db.collection('payments').doc(), Object.assign({ amount: paidNow, kind: 'room' }, pay, stamp()));
+    if (!i && cautionPaid > 0) b.set(db.collection('payments').doc(), Object.assign({ amount: cautionPaid, kind: 'caution' }, pay, stamp()));
+    b.update(db.collection('rooms').doc(it.r.id), { status: 'occupied', currentStayId: sref.id });
+  });
+  var nos = items.map(function (i) { return i.r.number; }).join(', ');
+  audit('check_in', 'stay', firstId, 'Room' + (items.length > 1 ? 's ' : ' ') + nos + ' · ' + name + ' · ' + n + ' nights · paid ' + money(amount) + (prior ? ' · deposit ' + money(prior) : ''), b);
   b.commit().catch(fail);
-  closeModal(); toast(stay.guestName + ' checked in to Room ' + r.number);
-}
-/* ---------- Reservation ---------- */
+  closeModal(); toast(name + ' checked in to Room' + (items.length > 1 ? 's ' : ' ') + nos);
+}/* ---------- Reservation ---------- */
 function openReservation(roomId, date) {
   if (!has('manager', 'frontdesk')) return;
   var rooms = roomsSorted().filter(function (r) { return r.status !== 'ooo'; });
@@ -263,43 +308,65 @@ function openReservation(roomId, date) {
   var b = '<form class="form" onsubmit="event.preventDefault();saveReservation()"><div class="fields">' +
     field('Guest name', input('rv-name', '', 'required')) +
     field('Phone number', input('rv-phone', '', 'required type="tel"')) +
-    field('Room', '<select id="rv-room" onchange="rvCalc()">' + rooms.map(function (r) { return '<option value="' + r.id + '"' + (r.id === roomId ? ' selected' : '') + '>' + esc(r.number + ' · ' + roomType(r).name) + '</option>'; }).join('') + '</select>') +
-    field('Arrival date', input('rv-date', date || todayStr(), 'type="date" required')) +
+    field('Arrival date', input('rv-date', date || todayStr(), 'type="date" required onchange="rvCalc()"')) +
     field('Nights', input('rv-nights', 1, 'type="number" min="1" required oninput="rvCalc()"')) +
     field('Expected arrival time', input('rv-time', S.settings.checkInTime, 'type="time"')) +
     sourceField('rv-source', 'phone') +
     '<div class="field">Stay cost<span class="static" id="rv-cost"></span></div>' +
+    '<div class="field span-all">Rooms<span class="hint">Tick every room this guest is booking. Rooms already taken for these dates cannot be ticked.</span><div class="room-picks">' +
+    rooms.map(function (r) { return '<label class="check"><input type="checkbox" name="rv-room" value="' + r.id + '"' + (r.id === roomId || (!roomId && r === rooms[0]) ? ' checked' : '') + ' onchange="rvCalc()"><span><strong>' + esc(r.number) + '</strong> ' + esc(roomType(r).name) + '<span class="muted">' + money(Number(roomType(r).rate) || 0) + ' <span id="rvt-' + r.id + '"></span></span></span></label>'; }).join('') + '</div></div>' +
     field('Note', '<textarea id="rv-note"></textarea>', 'full') +
     '</div><fieldset class="group"><legend>Deposit (optional)</legend>' + payChoices('rv-method') + '</div><div class="fields">' +
-    field('Deposit received (₦)', input('rv-dep', '', 'inputmode="numeric"'), '', 'Leave empty if the guest will pay on arrival') +
+    field('Deposit received (₦)', input('rv-dep', '', 'inputmode="numeric"'), '', 'Leave empty if the guest will pay on arrival. With several rooms it is shared across them by price.') +
     field('Reference', input('rv-ref', '', 'autocomplete="off"'), '', 'POS slip or transfer session ID') +
     photoField('payPhotos', 'Photo of the receipt (optional)') + '</div></fieldset>' +
     '<div class="note">The room is held for ' + (S.settings.holdHours || 3) + ' hours after the expected time, then it shows as a possible no-show. A deposit is taken off the amount due at check-in.</div>' +
     '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary">Save reservation</button></div></form>';
   openModal('New reservation', b); rvCalc();
 }
+function rvPicks() { return Array.prototype.slice.call(document.querySelectorAll('input[name="rv-room"]:checked')).map(function (i) { return byId(S.data.rooms, i.value); }).filter(Boolean); }
 function rvCalc() {
-  var r = byId(S.data.rooms, val('rv-room')), box = $('rv-cost'); if (!r || !box) return;
-  var rate = Number(roomType(r).rate) || 0, n = Math.max(1, num(val('rv-nights')));
-  box.textContent = money(rate * n) + ' (' + n + ' × ' + money(rate) + ')';
+  var box = $('rv-cost'); if (!box) return;
+  var from = val('rv-date'), n = Math.max(1, num(val('rv-nights'))), to = from ? addDays(from, n) : '', tot = 0, cnt = 0;
+  document.querySelectorAll('input[name="rv-room"]').forEach(function (i) {
+    var r = byId(S.data.rooms, i.value), c = from ? overlaps(r.id, from, to) : null, tag = $('rvt-' + r.id);
+    i.disabled = !!c; if (c) i.checked = false;
+    if (tag) tag.textContent = c ? '· taken by ' + c.guestName : '';
+    if (i.checked) { tot += (Number(roomType(r).rate) || 0) * n; cnt++; }
+  });
+  box.textContent = cnt ? money(tot) + ' · ' + cnt + ' room' + (cnt > 1 ? 's' : '') + ' × ' + n + ' night' + (n > 1 ? 's' : '') : 'Tick a room';
 }function overlaps(roomId, from, to, ignoreId) {
   return S.data.stays.find(function (s) { return s.id !== ignoreId && s.roomId === roomId && (s.status === 'reserved' || s.status === 'checked_in') && s.checkInDate < to && from < s.checkOutDate; });
 }
 async function saveReservation() {
-  var r = byId(S.data.rooms, val('rv-room')), from = val('rv-date'), n = Math.max(1, num(val('rv-nights'))), to = addDays(from, n);
+  var picks = rvPicks(), from = val('rv-date'), n = Math.max(1, num(val('rv-nights'))), to = addDays(from, n);
+  if (!picks.length) return toast('Tick at least one room', true);
   if (from < todayStr()) return toast('Arrival date is in the past', true);
-  var clash = overlaps(r.id, from, to);
-  if (clash) return toast('Room ' + r.number + ' is taken by ' + clash.guestName + ' (' + fmtDate(clash.checkInDate) + ' → ' + fmtDate(clash.checkOutDate) + ')', true);
+  for (var k = 0; k < picks.length; k++) {
+    var clash = overlaps(picks[k].id, from, to);
+    if (clash) return toast('Room ' + picks[k].number + ' is taken by ' + clash.guestName + ' (' + fmtDate(clash.checkInDate) + ' → ' + fmtDate(clash.checkOutDate) + ')', true);
+  }
   var dep = num(val('rv-dep')), pref = val('rv-ref'), method = radio('rv-method');
   if (dep > 0 && !pref) return toast('Enter the reference for the deposit', true);
   if (dep > 0 && !(await refOk(pref))) return;
-  var ref = db.collection('stays').doc(), b = db.batch(), name = val('rv-name');
-  b.set(ref, Object.assign({ roomId: r.id, roomNo: r.number, roomTypeName: roomType(r).name, guestName: name, phone: val('rv-phone'), source: val('rv-source') || 'phone', checkInDate: from, checkOutDate: to, nights: n, arrivalTime: val('rv-time'), notes: val('rv-note'), deposit: dep, paid: dep, status: 'reserved', createdAt: Date.now() }, stamp()));
-  if (dep > 0) b.set(db.collection('payments').doc(), Object.assign({ stayId: ref.id, roomNo: r.number, guestName: name, amount: dep, kind: 'deposit', method: method, sender: '', ref: pref, photos: S.form.payPhotos || [], status: payStatus() }, stamp()));
-  audit('reservation', 'stay', ref.id, 'Room ' + r.number + ' · ' + name + ' · ' + from + (dep ? ' · deposit ' + money(dep) : ''), b);
+  // Several rooms: one stay per room, linked by groupId. The deposit is shared across them by price.
+  var b = db.batch(), name = val('rv-name'), now = Date.now(), groupId = picks.length > 1 ? db.collection('stays').doc().id : '';
+  var costs = picks.map(function (r) { return (Number(roomType(r).rate) || 0) * n; }), tc = sum(costs, function (c) { return c; }), left = dep, firstId = '';
+  picks.forEach(function (r, i) {
+    var share = i === picks.length - 1 ? left : Math.round(tc ? dep * costs[i] / tc : dep / picks.length); left -= share;
+    var ref = db.collection('stays').doc(); if (!i) firstId = ref.id;
+    var stay = { roomId: r.id, roomNo: r.number, roomTypeName: roomType(r).name, guestName: name, phone: val('rv-phone'), source: val('rv-source') || 'phone', checkInDate: from, checkOutDate: to, nights: n, arrivalTime: val('rv-time'), notes: val('rv-note'), deposit: share, paid: share, status: 'reserved', createdAt: now };
+    if (groupId) Object.assign(stay, { groupId: groupId, groupName: name });
+    b.set(ref, Object.assign(stay, stamp()));
+    if (share > 0) b.set(db.collection('payments').doc(), Object.assign({ stayId: ref.id, roomNo: r.number, guestName: name, amount: share, kind: 'deposit', method: method, sender: '', ref: pref, photos: S.form.payPhotos || [], status: payStatus(), groupId: groupId }, stamp()));
+  });
+  var nos = picks.map(function (r) { return r.number; }).join(', ');
+  audit('reservation', 'stay', firstId, 'Room' + (picks.length > 1 ? 's ' : ' ') + nos + ' · ' + name + ' · ' + from + (dep ? ' · deposit ' + money(dep) : ''), b);
   b.commit().catch(fail);
-  closeModal(); toast(dep ? 'Reservation saved with ' + money(dep) + ' deposit' : 'Reservation saved');
+  closeModal(); toast((picks.length > 1 ? picks.length + ' rooms reserved' : 'Reservation saved') + (dep ? ' with ' + money(dep) + ' deposit' : ''));
 }
+// Every stay of the same group booking (just this one when it is not part of a group)
+function groupStays(s) { return s && s.groupId ? sortBy(allStays().filter(function (x) { return x.groupId === s.groupId; }), function (x) { return String(x.roomNo); }) : (s ? [s] : []); }
 /* ---------- Stay detail ---------- */
 var STAY_STATUS = { reserved: ['Reserved', 'st-reserved'], checked_in: ['In house', 'st-occupied'], checked_out: ['Checked out', 'st-ready'], cancelled: ['Cancelled', 'st-ooo'], no_show: ['No-show', 'st-ooo'] };
 function openStay(id) {
@@ -317,6 +384,14 @@ function openStay(id) {
     (s.total != null ? info('Paid', money(s.paid || 0)) + info((s.balance || 0) < 0 ? 'In credit' : 'Balance owed', money(Math.abs(s.balance || 0))) : '') +
     (s.caution ? info('Caution fee', money(s.caution) + ' · ' + ({ held: 'held', refund_due: 'refund ' + money(s.cautionRefundDue) + ' due', refunded: 'refunded', kept: 'kept in full', none: '' }[s.cautionStatus] || '')) : '') +
     '</div>';
+  var grp = groupStays(s);
+  if (grp.length > 1) {
+    var live = grp.filter(function (x) { return x.status !== 'cancelled' && x.status !== 'no_show'; });
+    var gOwe = sum(live, function (x) { return x.total != null ? Math.max(0, x.balance || 0) : Math.max(0, stayRate(x) * (x.nights || 0) - (x.paid || 0)); });
+    b += '<div class="group-box"><div class="row between"><strong>Group booking · ' + live.length + ' room' + (live.length > 1 ? 's' : '') + '</strong>' + (gOwe ? '<span class="muted">' + money(gOwe) + ' still to pay for all rooms</span>' : '') + '</div><div class="row">' +
+      grp.map(function (x) { var xs = STAY_STATUS[x.status] || ['', '']; return '<button class="btn small" type="button"' + (x.id === s.id ? ' aria-current="true"' : '') + ' onclick="openStay(\'' + x.id + '\')">Room ' + esc(x.roomNo) + ' · ' + esc(xs[0]) + (x.id === s.id ? ' (this one)' : '') + '</button>'; }).join('') +
+      '</div><div class="muted small">Each room is checked in, extended and checked out on its own. Checking in one room offers to check in the others that are Ready.</div></div>';
+  }
   if (s.idPhotos && s.idPhotos.length) b += '<div class="thumbs">' + thumbs(s.idPhotos) + '</div>';
   if (s.notes) b += '<div class="note">' + esc(s.notes) + '</div>';
   if (s.missing && s.missing.length) b += '<div class="note bad">Missing at check-out: ' + esc(s.missing.map(function (m) { return m.name + ' × ' + m.short; }).join(', ')) + (s.damageNote ? '. ' + esc(s.damageNote) : '') + '</div>';
@@ -347,46 +422,55 @@ function openStay(id) {
   openModal(s.guestName, b, true);
 }
 /* ---------- Receipt for the guest: WhatsApp, copy or print ---------- */
+// The nightly rate of a stay; a reservation has none saved yet, so it uses the room type rate
+function stayRate(x) { if (x.rate) return x.rate; var r = byId(S.data.rooms, x.roomId); return r ? (Number(roomType(r).rate) || 0) : 0; }
+// A receipt covers the whole group booking (every room still booked or stayed in)
+function receiptStays(s) { var g = groupStays(s).filter(function (x) { return x.status !== 'cancelled' && x.status !== 'no_show'; }); return g.length ? g : [s]; }
+function rcptSums(ss) {
+  var ids = ss.map(function (x) { return x.id; });
+  var pays = sortBy(allPayments().filter(function (p) { return ids.indexOf(p.stayId) >= 0 && payCounts(p); }), function (p) { return p.at; });
+  var res = ss.every(function (x) { return x.status === 'reserved'; });
+  var disc = sum(ss, function (x) { return x.discount && x.discountStatus !== 'rejected' ? x.discount : 0; });
+  var cost = sum(ss, function (x) { return stayRate(x) * (x.nights || 0); }), extras = sum(ss, function (x) { return x.extras || 0; });
+  var owe = sum(ss, function (x) { return x.total != null ? (x.balance || 0) : stayRate(x) * (x.nights || 0) - (x.paid || 0); });
+  var dep = sum(ss, function (x) { return x.status === 'reserved' ? (x.paid || 0) : 0; }), caution = sum(ss, function (x) { return x.caution && x.cautionStatus === 'held' ? x.caution : 0; });
+  var last = ss.reduce(function (a, x) { return x.checkOutDate > a ? x.checkOutDate : a; }, ss[0].checkOutDate);
+  return { pays: pays, res: res, disc: disc, cost: cost, extras: extras, bill: cost - disc + extras, owe: owe, dep: dep, caution: caution, last: last, multi: ss.length > 1, open: ss.some(function (x) { return x.status !== 'checked_out'; }) };
+}
+function rcptEnd(m) { return m.res ? (m.dep ? 'Deposit received: ' + money(m.dep) + '. The rest (' + money(Math.max(0, m.owe)) + ') is paid at check-in.' : 'Payment is due at check-in.') : m.owe > 0 ? 'Balance owed: ' + money(m.owe) : m.owe < 0 ? 'In credit: ' + money(-m.owe) : 'Paid in full. Thank you.'; }
 function receiptText(s) {
-  var pays = sortBy(allPayments().filter(function (p) { return p.stayId === s.id && payCounts(p); }), function (p) { return p.at; });
-  var L = ['*' + (S.settings.businessName || 'Wiwe Apartments') + '*', s.status === 'reserved' ? 'Booking confirmation' : 'Receipt', '',
-    'Guest: ' + s.guestName, 'Room ' + s.roomNo + (s.roomTypeName ? ' (' + s.roomTypeName + ')' : ''),
-    fmtDate(s.checkInDate) + ' to ' + fmtDate(s.checkOutDate) + ' · ' + s.nights + ' night' + (s.nights > 1 ? 's' : '') + (s.rate ? ' at ' + money(s.rate) : ''), ''];
-  if (s.total != null) {
-    if (s.discount && s.discountStatus !== 'rejected') L.push('Discount: -' + money(s.discount));
-    L.push('Room total: ' + money(s.total));
-    if (s.extras) L.push('Items: ' + money(s.extras));
-  }
-  if (pays.length) { L.push('', 'Payments'); pays.forEach(function (p) { L.push('• ' + money(p.amount) + ' ' + (PAY_KIND[p.kind] || p.kind).toLowerCase() + ' · ' + (PAY_LABEL[p.method] || p.method || '') + (p.ref ? ' ref ' + p.ref : '') + ' · ' + fmtDate(p.at)); }); }
+  var ss = receiptStays(s), m = rcptSums(ss);
+  var L = ['*' + (S.settings.businessName || 'Wiwe Apartments') + '*', m.res ? 'Booking confirmation' : 'Receipt', '', 'Guest: ' + s.guestName];
+  ss.forEach(function (x) { L.push('Room ' + x.roomNo + (x.roomTypeName ? ' (' + x.roomTypeName + ')' : '') + ' · ' + fmtDate(x.checkInDate) + ' to ' + fmtDate(x.checkOutDate) + ' · ' + x.nights + ' night' + (x.nights > 1 ? 's' : '') + (stayRate(x) ? ' at ' + money(stayRate(x)) : '')); });
   L.push('');
-  if (s.total != null) L.push((s.balance || 0) > 0 ? 'Balance owed: ' + money(s.balance) : (s.balance || 0) < 0 ? 'In credit: ' + money(-s.balance) : 'Paid in full. Thank you.');
-  else if (s.paid) L.push('Deposit received: ' + money(s.paid) + '. The rest is paid at check-in.');
-  if (s.caution && s.cautionStatus === 'held') L.push('Refundable caution fee held: ' + money(s.caution));
-  if (s.status !== 'checked_out') L.push('Check-out is by ' + S.settings.checkOutTime + ' on ' + fmtDate(s.checkOutDate) + '.');
+  if (m.disc) L.push('Discount: -' + money(m.disc));
+  L.push((m.multi ? 'Rooms total: ' : 'Room total: ') + money(m.cost - m.disc));
+  if (m.extras) L.push('Items: ' + money(m.extras));
+  if (m.pays.length) { L.push('', 'Payments'); m.pays.forEach(function (p) { L.push('• ' + money(p.amount) + ' ' + (PAY_KIND[p.kind] || p.kind).toLowerCase() + (m.multi ? ' · Room ' + p.roomNo : '') + ' · ' + (PAY_LABEL[p.method] || p.method || '') + (p.ref ? ' ref ' + p.ref : '') + ' · ' + fmtDate(p.at)); }); }
+  L.push('', rcptEnd(m));
+  if (m.caution) L.push('Refundable caution fee held: ' + money(m.caution));
+  if (m.open) L.push('Check-out is by ' + S.settings.checkOutTime + ' on ' + fmtDate(m.last) + '.');
   L.push('', 'Issued ' + fmtDT(Date.now()) + ' by ' + meName());
   return L.join('\n');
 }
 /* The receipt as a printable page with the logo; the WhatsApp / copy version is receiptText() */
 function receiptHtml(s) {
-  var pays = sortBy(allPayments().filter(function (p) { return p.stayId === s.id && payCounts(p); }), function (p) { return p.at; });
-  var res = s.status === 'reserved', roomCost = (s.rate || 0) * (s.nights || 0);
-  var disc = s.discount && s.discountStatus !== 'rejected' ? s.discount : 0, bill = (s.total != null ? s.total : roomCost - disc) + (s.extras || 0);
-  var lines = '<tr><td>Room ' + esc(s.roomNo) + ' · ' + s.nights + ' night' + (s.nights > 1 ? 's' : '') + (s.rate ? ' × ' + money(s.rate) : '') + '</td><td class="r">' + money(roomCost) + '</td></tr>' +
-    (disc ? '<tr class="sub"><td>Discount</td><td class="r">−' + money(disc) + '</td></tr>' : '') +
-    (s.extras ? '<tr><td>Items added to the bill</td><td class="r">' + money(s.extras) + '</td></tr>' : '') +
-    '<tr class="tot"><td>' + (res ? 'Stay cost' : 'Total') + '</td><td class="r">' + money(bill) + '</td></tr>';
-  var paid = pays.length ? '<table><thead><tr><th>Payment</th><th class="r">Amount</th></tr></thead><tbody>' + pays.map(function (p) {
-    return '<tr><td>' + esc(fmtDate(p.at) + ' · ' + (PAY_KIND[p.kind] || p.kind)) + '<br><span class="rcpt-no">' + esc(dots([PAY_LABEL[p.method] || p.method, p.ref ? 'ref ' + p.ref : ''])) + '</span></td><td class="r">' + money(p.amount) + '</td></tr>';
+  var ss = receiptStays(s), m = rcptSums(ss);
+  var lines = ss.map(function (x) { return '<tr><td>Room ' + esc(x.roomNo) + ' · ' + x.nights + ' night' + (x.nights > 1 ? 's' : '') + (stayRate(x) ? ' × ' + money(stayRate(x)) : '') + '</td><td class="r">' + money(stayRate(x) * (x.nights || 0)) + '</td></tr>'; }).join('') +
+    (m.disc ? '<tr class="sub"><td>Discount</td><td class="r">−' + money(m.disc) + '</td></tr>' : '') +
+    (m.extras ? '<tr><td>Items added to the bill</td><td class="r">' + money(m.extras) + '</td></tr>' : '') +
+    '<tr class="tot"><td>' + (m.res ? 'Stay cost' : 'Total') + '</td><td class="r">' + money(m.bill) + '</td></tr>';
+  var paid = m.pays.length ? '<table><thead><tr><th>Payment</th><th class="r">Amount</th></tr></thead><tbody>' + m.pays.map(function (p) {
+    return '<tr><td>' + esc(fmtDate(p.at) + ' · ' + (PAY_KIND[p.kind] || p.kind) + (m.multi ? ' · Room ' + p.roomNo : '')) + '<br><span class="rcpt-no">' + esc(dots([PAY_LABEL[p.method] || p.method, p.ref ? 'ref ' + p.ref : ''])) + '</span></td><td class="r">' + money(p.amount) + '</td></tr>';
   }).join('') + '</tbody></table>' : '';
-  var bal = s.balance || 0, end = res ? (s.paid ? 'Deposit received: ' + money(s.paid) + '. The rest is paid at check-in.' : 'Payment is due at check-in.') : bal > 0 ? 'Balance owed: ' + money(bal) : bal < 0 ? 'In credit: ' + money(-bal) : 'Paid in full. Thank you.';
-  return '<div class="rcpt" id="rcpt"><div class="rcpt-head"><img src="img/logo.png" alt="' + esc(S.settings.businessName || 'Wiwe Apartments') + '"><span class="rcpt-title">' + (res ? 'Booking confirmation' : 'Receipt') + '</span><span class="rcpt-no">No. ' + esc(s.id.slice(-6).toUpperCase()) + ' · ' + esc(fmtDT(Date.now())) + '</span></div>' +
-    '<dl class="rcpt-meta"><dt>Guest</dt><dd>' + esc(s.guestName) + '</dd><dt>Room</dt><dd>' + esc(s.roomNo + (s.roomTypeName ? ' · ' + s.roomTypeName : '')) + '</dd>' +
-    '<dt>Arrival</dt><dd>' + esc(fmtDate(s.checkInDate)) + '</dd><dt>Departure</dt><dd>' + esc(fmtDate(s.checkOutDate) + ', by ' + S.settings.checkOutTime) + '</dd></dl>' +
+  var first = ss.reduce(function (a, x) { return x.checkInDate < a ? x.checkInDate : a; }, ss[0].checkInDate);
+  return '<div class="rcpt" id="rcpt"><div class="rcpt-head"><img src="img/logo.png" alt="' + esc(S.settings.businessName || 'Wiwe Apartments') + '"><span class="rcpt-title">' + (m.res ? 'Booking confirmation' : 'Receipt') + '</span><span class="rcpt-no">No. ' + esc(s.id.slice(-6).toUpperCase()) + ' · ' + esc(fmtDT(Date.now())) + '</span></div>' +
+    '<dl class="rcpt-meta"><dt>Guest</dt><dd>' + esc(s.guestName) + '</dd><dt>' + (m.multi ? 'Rooms' : 'Room') + '</dt><dd>' + esc(m.multi ? ss.map(function (x) { return x.roomNo; }).join(', ') : s.roomNo + (s.roomTypeName ? ' · ' + s.roomTypeName : '')) + '</dd>' +
+    '<dt>Arrival</dt><dd>' + esc(fmtDate(first)) + '</dd><dt>Departure</dt><dd>' + esc(fmtDate(m.last) + ', by ' + S.settings.checkOutTime) + '</dd></dl>' +
     '<table><tbody>' + lines + '</tbody></table>' + paid +
-    '<div class="rcpt-note"><strong>' + esc(end) + '</strong>' + (s.caution && s.cautionStatus === 'held' ? '<br>Refundable caution fee held: ' + money(s.caution) : '') + '</div>' +
+    '<div class="rcpt-note"><strong>' + esc(rcptEnd(m)) + '</strong>' + (m.caution ? '<br>Refundable caution fee held: ' + money(m.caution) : '') + '</div>' +
     '<div class="rcpt-foot">' + esc(S.settings.businessName || 'Wiwe Apartments') + ' · Sowhe, Badagry<br>Issued by ' + esc(meName()) + '</div></div>';
-}
-function openReceipt(id) {
+}function openReceipt(id) {
   var s = findStay(id); if (!s) return;
   var text = receiptText(s), phone = String(s.phone || '').replace(/\D/g, '').replace(/^0/, '234');
   S.receipt = text.replace(/\*/g, '');
@@ -554,7 +638,7 @@ VIEWS.stays = {
     return html + '<div class="table-wrap"><table><thead><tr><th>Guest</th><th>Room</th><th>Dates</th><th>Nights</th><th class="right">Total</th><th>Status</th></tr></thead><tbody>' +
       list.slice(0, 200).map(function (s) {
         var ss = STAY_STATUS[s.status] || ['', ''];
-        return '<tr class="clickable" onclick="openStay(\'' + s.id + '\')"><td><strong>' + esc(s.guestName) + '</strong><div class="muted small">' + esc(s.phone || '') + '</div></td><td>' + esc(s.roomNo) + '</td><td>' + fmtDate(s.checkInDate) + ' → ' + fmtDate(s.checkOutDate) + '</td><td>' + (s.nights || '') + '</td><td class="right money">' + (s.total != null ? money(s.total) : '—') + '</td><td>' + pill(ss[0], ss[1]) + (isOverstay(s) ? ' ' + pill('Overstay', 'st-bad') : '') + ((s.balance || 0) > 0 ? ' ' + pill('Owes ' + money(s.balance), 'st-alert') : '') + '</td></tr>';
+        return '<tr class="clickable" onclick="openStay(\'' + s.id + '\')"><td><strong>' + esc(s.guestName) + '</strong><div class="muted small">' + esc(s.phone || '') + '</div></td><td>' + esc(s.roomNo) + (s.groupId ? ' <span class="muted small">group</span>' : '') + '</td><td>' + fmtDate(s.checkInDate) + ' → ' + fmtDate(s.checkOutDate) + '</td><td>' + (s.nights || '') + '</td><td class="right money">' + (s.total != null ? money(s.total) : '—') + '</td><td>' + pill(ss[0], ss[1]) + (isOverstay(s) ? ' ' + pill('Overstay', 'st-bad') : '') + ((s.balance || 0) > 0 ? ' ' + pill('Owes ' + money(s.balance), 'st-alert') : '') + '</td></tr>';
       }).join('') + '</tbody></table></div>';
   }
 };
@@ -573,7 +657,7 @@ function payPill(p) {
 }
 function normRef(r) { return String(r || '').replace(/\s+/g, '').toLowerCase(); }
 // The same slip used for two payments is the classic trick. Two parts of one payment (room + caution) share a reference and are fine.
-function sameSlip(a, b) { return a.stayId === b.stayId && Math.abs((a.at || 0) - (b.at || 0)) < 120000; }
+function sameSlip(a, b) { return (a.stayId === b.stayId || (a.groupId && a.groupId === b.groupId)) && Math.abs((a.at || 0) - (b.at || 0)) < 120000; }
 function dupOf(p) { var r = normRef(p.ref); if (!r || p.status === 'void') return null; return allPayments().find(function (x) { return x.id !== p.id && x.status !== 'void' && normRef(x.ref) === r && !sameSlip(x, p); }) || null; }
 async function refOk(ref, stayId) {
   var d = dupOf({ id: '', ref: ref, stayId: stayId || '', at: Date.now() });

@@ -384,3 +384,15 @@ This reverses the "No owner confirmation" part of section 22.
 - **Security rules:** staff can now only create money-in payments as `unconfirmed`; only the owner can confirm, mark not received or void. The rules publish job runs automatically when `firestore.rules` changes.
 - Payments recorded while v3.0 / v3.1 were live stay `confirmed`.
 - CSV export: the Status column reads confirmed / unconfirmed / refund waiting / refused / void.
+
+## 25. v3.3.0: one guest, several rooms (group bookings)
+
+- **How it is stored:** still one `stays` record per room, so the room board, housekeeping, extend, move and check-out work unchanged. Rooms booked together share `groupId` (a random id) and `groupName` (the guest's name). Their payments carry the same `groupId`, so one POS slip split across the rooms is not flagged as "Same reference" (`sameSlip()`).
+- **New reservation:** the Room drop-down is now a grid of tick boxes (`rvPicks()`, `rvCalc()`). Rooms already taken for the chosen dates are greyed out with the name of the guest holding them. A deposit is shared across the rooms by price; the last room takes any rounding difference.
+- **Check-in:** under the Room drop-down, "More rooms for this guest" lists the other Ready rooms (`ciExtras()`). Each ticked room gets its own key card box in part 4. The total, deposits and "Collect now" cover every room. One payment is spread over the rooms in order; a short payment leaves the last rooms owing. The discount and the caution fee sit on the main room.
+- **Checking in a group reservation:** opening Check in on any room of the group ticks the group's other reserved rooms that are Ready (`S.form.groupRv`), and their deposits are counted. Rooms that are not Ready yet are named in a note and are checked in later from their own reservation.
+- **Stay pop-up:** a "Group booking · N rooms" box links to every room in the group with its status, and shows what is still to pay for all rooms.
+- **Receipt / booking confirmation:** covers the whole group (each room, all payments, one balance). Reservations now show their cost using the room type rate (`stayRate()`); before, a reservation receipt showed ₦0 for the stay.
+- **Stays list:** grouped rooms show "group" next to the room number.
+- Cancel, no-show, extend and check-out still act on one room at a time.
+- No security-rule change was needed.
