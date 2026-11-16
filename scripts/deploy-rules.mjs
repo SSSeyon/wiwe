@@ -8,8 +8,8 @@ import admin from 'firebase-admin';
 import { readFileSync } from 'node:fs';
 
 if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
-  console.log('FIREBASE_SERVICE_ACCOUNT is not set. Paste firestore.rules into the Firebase console by hand.');
-  process.exit(0);
+  console.error('FIREBASE_SERVICE_ACCOUNT is not set, so the rules were NOT published. Add the secret in GitHub (Settings > Secrets and variables > Actions), or paste firestore.rules into the Firebase console by hand.');
+  process.exit(1);
 }
 admin.initializeApp({ credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)) });
 const source = readFileSync('firestore.rules', 'utf8');

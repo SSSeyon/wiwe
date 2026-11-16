@@ -217,54 +217,22 @@ function printPage() { document.querySelectorAll('#view details').forEach(functi
   var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'wiwe-' + kind + '-' + R.month + '.csv'; a.click();
 }
 
-/* ---------- Admin settings (behind the admin code) ---------- */
-var pinEntry = '';
-function adminLocked() { return !isAdmin() || Date.now() > S.adminUntil; }
-function lockout() { try { return JSON.parse(localStorage.getItem('wiwe_lock') || '{"n":0,"until":0}'); } catch (e) { return { n: 0, until: 0 }; } }
-function setLockout(o) { try { localStorage.setItem('wiwe_lock', JSON.stringify(o)); } catch (e) {} }
+/* ---------- Admin settings (admin accounts only; the database rules enforce it) ---------- */
 VIEWS.admin = {
   title: 'Admin settings',
-  actions: function () { return adminLocked() ? '' : '<button class="btn" type="button" onclick="S.adminUntil=0;render()">Lock</button>'; },
   render: function () {
-    if (!isAdmin()) return emptyState('admin', 'Only the owner can open admin settings', 'Ask the owner if something needs changing.');
-    if (adminLocked()) return pinScreen();
-    S.adminUntil = Date.now() + 10 * 60000;
-    var tab = curTab('admin', 'general');
-    var html = tabs('admin', [['general', 'General'], ['rooms', 'Rooms and rates'], ['staff', 'Staff'], ['receipt', 'Receipt'], ['security', 'Codes'], ['audit', 'Activity log'], ['data', 'Backup']]);
+    if (!isAdmin()) return emptyState('admin', 'Only an admin can open admin settings', 'Ask an admin if something needs changing.');
+    var tab = curTab('admin', 'general'), waiting = adminReqsForMe().length;
+    var html = tabs('admin', [['general', 'General'], ['rooms', 'Rooms and rates'], ['staff', 'Staff' + (waiting ? ' (' + waiting + ')' : '')], ['receipt', 'Receipt'], ['audit', 'Activity log'], ['data', 'Backup']]);
     if (tab === 'general') html += adminGeneral();
     if (tab === 'rooms') html += adminRooms();
     if (tab === 'staff') html += adminStaff();
     if (tab === 'receipt') { html += adminReceipt(); setTimeout(rdPreview, 0); }
-    if (tab === 'security') html += adminSecurity();
     if (tab === 'audit') { html += '<div class="card" id="audit-box">' + skeleton(8) + '</div>'; setTimeout(loadAudit, 0); }
     if (tab === 'data') html += '<div class="card"><h2>Backup</h2><p class="muted">Downloads everything (except photos) as one JSON file. Do this monthly and keep it safe.</p><button class="btn primary" type="button" onclick="backup()">Download backup</button></div>' + adminCleanup();
     return html;
   }
 };
-function pinScreen() {
-  var lo = lockout(), locked = lo.until > Date.now();
-  var dots = ''; for (var i = 0; i < 6; i++) dots += '<span class="' + (i < pinEntry.length ? 'on' : '') + '"></span>';
-  var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'];
-  return '<div class="pin-screen"><div class="logo-mark">' + icon('admin', 20) + '</div><h2>Admin settings</h2><span class="pin-sub">' + (locked ? 'Too many wrong tries. Try again at ' + fmtTime(lo.until) + '.' : 'Enter your 6-digit admin code.') + '</span>' +
-    '<div class="pin-dots" role="img" aria-label="' + pinEntry.length + ' of 6 digits entered">' + dots + '</div>' +
-    '<div class="pad">' + keys.map(function (k) { return k === '' ? '<button type="button" class="blank" tabindex="-1" aria-hidden="true"></button>' : '<button type="button"' + (locked ? ' disabled' : '') + ' aria-label="' + (k === '⌫' ? 'Delete digit' : 'Digit ' + k) + '" onclick="pinKey(\'' + k + '\')">' + k + '</button>'; }).join('') + '</div>' +
-    '<span class="pin-foot">Locks again after 10 minutes. 5 wrong tries locks it for an hour.</span></div>';
-}
-async function pinKey(k) {
-  if (k === '⌫') pinEntry = pinEntry.slice(0, -1); else if (pinEntry.length < 6) pinEntry += k;
-  render();
-  if (pinEntry.length < 6) return;
-  var code = pinEntry; pinEntry = '';
-  try {
-    var s = await db.collection('settings').doc('security').get();
-    var ok = s.exists && s.data().codeHash === await sha256(code + '|wiwe-admin');
-    var lo = lockout();
-    if (ok) { setLockout({ n: 0, until: 0 }); S.adminUntil = Date.now() + 10 * 60000; audit('admin_unlock', 'settings', '', ''); }
-    else { lo.n = (lo.n || 0) + 1; if (lo.n >= 5) { lo.until = Date.now() + 3600000; lo.n = 0; } setLockout(lo); toast('Wrong code', true); }
-  } catch (e) { fail(e); }
-  render();
-}
-document.addEventListener('keydown', function (e) { if (S.view === 'admin' && adminLocked() && $('modal').classList.contains('hidden')) { if (/^[0-9]$/.test(e.key)) pinKey(e.key); else if (e.key === 'Backspace') pinKey('⌫'); } });
 
 function adminGeneral() {
   var s = S.settings;
@@ -349,11 +317,11 @@ async function archiveRoom(id) {
 function adminStaff() {
   var active = sortBy(S.data.users.filter(function (u) { return u.active !== false; }), function (u) { return u.name; });
   var past = sortBy(S.data.users.filter(function (u) { return u.active === false; }), function (u) { return -(u.endedAt || 0); });
-  return '<div class="card"><div class="card-head"><h2>Staff accounts</h2><button class="btn primary small" type="button" onclick="openStaff()">+ Add account</button></div>' +
+  return adminChangesCard() + '<div class="card"><div class="card-head"><h2>Staff accounts</h2><button class="btn primary small" type="button" onclick="openStaff()">+ Add account</button></div>' +
     active.map(function (u) {
       var self = u.id === S.user.uid, waiting = u.onboarded === false;
-      return '<div class="list-row"><span class="main-t"><strong>' + esc(u.name) + ' · @' + esc(u.username) + '</strong><span>' + esc((u.roles || []).map(function (r) { return ROLES[r]; }).join(', ')) + (u.handoverAt ? ' · holder since ' + fmtDate(u.handoverAt) : '') + '</span></span>' +
-        '<span class="row">' + (waiting ? pill('Not onboarded yet', 'st-alert') : '') +
+      return '<div class="list-row staff-row">' + avatar(u) + '<span class="main-t"><strong>' + esc(u.name) + ' · @' + esc(u.username) + '</strong><span>' + esc((u.roles || []).map(function (r) { return ROLES[r]; }).join(', ') || 'No role yet') + (u.handoverAt ? ' · holder since ' + fmtDate(u.handoverAt) : '') + '</span></span>' +
+        '<span class="row">' + (waiting ? pill('Not onboarded yet', 'st-alert') : '') + (onHold(u) ? pill('Reset · on hold', 'st-alert') : '') +
         '<button class="btn small" type="button" onclick="openStaff(\'' + u.id + '\')">Edit</button>' +
         (waiting ? '<button class="btn small primary" type="button" onclick="openOnboard(\'' + u.id + '\')">Onboard</button>' : self ? '' : '<button class="btn small" type="button" onclick="openHandover(\'' + u.id + '\')">Reset password / hand over</button>') + '</span></div>';
     }).join('') + '</div>' +
@@ -394,41 +362,6 @@ function inviteBatch(b, uid, email, temp, username, name) {
   b.set(db.collection('invites').doc(code), { uid: uid, email: email, temp: temp, username: username, name: name, expires: Date.now() + INVITE_DAYS * 86400000, createdBy: S.user.uid, createdAt: Date.now() });
   return code;
 }
-async function saveStaff(id) {
-  var roles = checkedRoles();
-  if (id === S.user.uid && roles.indexOf('admin') < 0) roles.push('admin');
-  if (!roles.length) return toast('Pick at least one role', true);
-  var user = cleanUsername(val('sf-user'));
-  if (!user) return toast('Choose a username (letters and numbers)', true);
-  $('sf-save').disabled = true;
-  try {
-    if (id) {
-      var u = byId(S.data.users, id), b = db.batch(), d = { name: val('sf-name'), phone: val('sf-phone'), roles: roles };
-      if ($('sf-active') && !val('sf-active')) { d.active = false; d.endedReason = 'disabled'; d.endedAt = Date.now(); }
-      if (user !== u.username) {
-        if ((await db.collection('usernames').doc(user).get()).exists) throw new Error('That username is already taken');
-        var old = await db.collection('usernames').doc(u.username).get();
-        b.set(db.collection('usernames').doc(user), Object.assign({}, old.exists ? old.data() : { uid: id }, { at: Date.now() }));
-        if (old.exists && old.data().uid === id) b.delete(db.collection('usernames').doc(u.username));
-        if (u.inviteCode) b.update(db.collection('invites').doc(u.inviteCode), { username: user });
-        d.username = user;
-      }
-      b.update(db.collection('users').doc(id), d);
-      await b.commit();
-      audit('staff_updated', 'user', id, d.name + ' · ' + roles.join(',') + (d.username ? ' · username @' + u.username + ' → @' + user : '') + (d.active === false ? ' · disabled' : ''));
-      closeModal(); toast(d.username ? 'Saved. New username: @' + user : 'Saved');
-    } else {
-      if ((await db.collection('usernames').doc(user).get()).exists) throw new Error('That username is already taken');
-      var temp = randomCode(24), login = await createLogin(temp), now = Date.now(), b2 = db.batch();
-      var code = inviteBatch(b2, login.uid, login.email, temp, user, val('sf-name'));
-      b2.set(db.collection('users').doc(login.uid), { name: val('sf-name'), username: user, phone: val('sf-phone'), roles: roles, active: true, onboarded: false, inviteCode: code, createdAt: now, createdBy: S.user.uid });
-      b2.set(db.collection('usernames').doc(user), { uid: login.uid, email: login.email, at: now });
-      await b2.commit();
-      audit('staff_added', 'user', login.uid, '@' + user + ' · ' + val('sf-name') + ' · ' + roles.join(','));
-      closeModal(); setTimeout(function () { openOnboard(login.uid); }, 300);
-    }
-  } catch (e) { $('sf-save').disabled = false; fail(e); }
-}
 function onboardLink(code) { return location.origin + location.pathname + '#onboard=' + code; }
 async function openOnboard(uid) {
   var u = byId(S.data.users, uid); if (!u) return;
@@ -455,41 +388,12 @@ function openHandover(id) {
     '<label class="choice"><input type="radio" name="ho-kind" value="password_reset" checked onchange="$(\'ho-who\').classList.add(\'hidden\')">Same person forgot their password</label>' +
     '<label class="choice"><input type="radio" name="ho-kind" value="handover" onchange="$(\'ho-who\').classList.remove(\'hidden\')">A new person is taking over</label></div>' +
     '<div class="fields hidden" id="ho-who">' + field("New holder's name", input('ho-name', '', '')) + field('Phone', input('ho-phone', '', 'type="tel"')) + '</div>' +
+    (isActiveAdmin(u) ? '<div class="note warn">This is an admin account. A password reset happens now, but the account cannot approve admin changes for 2 hours unless another admin confirms the reset. Handing it to a new person needs a second admin to approve.</div>' : '') +
     '<div class="muted small">The current password stops working immediately. You get a new onboarding link for them to choose a password. Same username and roles.</div>' +
     '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary" id="ho-save">Make new link</button></div></form>';
   openModal('Reset password / hand over · @' + u.username, b);
 }
-async function saveHandover(id) {
-  var old = byId(S.data.users, id), kind = radio('ho-kind'), name = kind === 'handover' ? val('ho-name') : old.name;
-  if (!name) return toast("Enter the new holder's name", true);
-  $('ho-save').disabled = true;
-  try {
-    var temp = randomCode(24), login = await createLogin(temp), now = Date.now(), b = db.batch();
-    var code = inviteBatch(b, login.uid, login.email, temp, old.username, name);
-    b.set(db.collection('users').doc(login.uid), { name: name, username: old.username, phone: kind === 'handover' ? val('ho-phone') : (old.phone || ''), roles: old.roles || [], active: true, onboarded: false, inviteCode: code, createdAt: now, createdBy: S.user.uid, previousUid: id, handoverAt: kind === 'handover' ? now : (old.handoverAt || old.createdAt || now) });
-    b.update(db.collection('users').doc(id), { active: false, endedReason: kind, endedAt: now, handedOverTo: login.uid });
-    b.set(db.collection('usernames').doc(old.username), { uid: login.uid, email: login.email, at: now });
-    if (old.inviteCode) b.delete(db.collection('invites').doc(old.inviteCode));
-    await b.commit();
-    audit(kind === 'handover' ? 'account_handover' : 'password_reset', 'user', login.uid, '@' + old.username + (kind === 'handover' ? ' from ' + old.name + ' to ' + name : ' · ' + old.name));
-    closeModal(); setTimeout(function () { openOnboard(login.uid); }, 300);
-  } catch (e) { $('ho-save').disabled = false; fail(e); }
-}
 
-function adminSecurity() {
-  return '<div class="card"><h2>Change admin code</h2><form class="form" onsubmit="event.preventDefault();changeCode()"><div class="fields">' +
-    field('Current admin code', input('cc-old', '', 'type="password" inputmode="numeric" required')) + field('New admin code (6 digits)', input('cc-new', '', 'type="password" inputmode="numeric" pattern="[0-9]{6}" required')) +
-    '</div><div class="form-actions"><button class="btn primary" type="submit">Change code</button></div></form></div>' +
-    '<div class="card"><h2>My password</h2><p class="muted">Everyone can change their own password from the key button next to their name.</p><button class="btn" type="button" onclick="openMyPassword()">Change my password</button></div>';
-}
-async function changeCode() {
-  try {
-    var s = await db.collection('settings').doc('security').get();
-    if (s.data().codeHash !== await sha256(val('cc-old') + '|wiwe-admin')) return toast('Current code is wrong', true);
-    await db.collection('settings').doc('security').set({ codeHash: await sha256(val('cc-new') + '|wiwe-admin') });
-    audit('admin_code_changed', 'settings', '', ''); toast('Admin code changed'); render();
-  } catch (e) { fail(e); }
-}
 function loadAudit() {
   db.collection('audit').orderBy('at', 'desc').limit(300).get().then(function (s) {
     var box = $('audit-box'); if (!box) return;
@@ -568,17 +472,17 @@ function copySummary() {
 }
 
 /* ---------- Are the live security rules up to date? ---------- */
-// Older rules have no "invites" section, so even the owner is refused this harmless read.
+// Rules older than v3.6 have no "meta/admins" section, so even an admin is refused this harmless read.
 async function checkRules() {
   if (!isAdmin()) return;
-  try { await db.collection('meta').doc('rules').get({ source: 'server' }); S.rulesOutdated = false; } // "meta/rules" is only readable under the v3 rules
+  try { await db.collection('meta').doc('admins').get({ source: 'server' }); S.rulesOutdated = false; } // "meta/admins" is only readable under the v3.6 rules
   catch (e) { S.rulesOutdated = /permission/i.test((e && (e.code || e.message)) || ''); }
   scheduleRender();
 }
 function openRulesHelp() {
   var pid = FIREBASE_CONFIG.projectId;
   openModal('Update the security rules',
-    '<div class="note warn">The app was updated but the database is still using older security rules, so some actions (recording payments, check-in, reservations with a deposit, sales) are refused.</div>' +
+    '<div class="note warn">The app was updated but the database is still using older security rules, so some actions (removing test records, admin approvals, profile photos and others) are refused.</div>' +
     '<ol class="steps-list">' +
     '<li>Open the latest rules: <a href="https://github.com/SSSeyon/wiwe/blob/main/firestore.rules" target="_blank" rel="noopener">firestore.rules on GitHub</a>, then click the <strong>Copy raw file</strong> button (two squares icon).</li>' +
     '<li>Open <a href="https://console.firebase.google.com/project/' + esc(pid) + '/firestore/rules" target="_blank" rel="noopener">Firebase → Firestore → Rules</a>.</li>' +

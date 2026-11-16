@@ -1,5 +1,5 @@
 rules_version = '2';
-// Wiwe Apartments: Firestore security rules (v3).
+// Wiwe Apartments: Firestore security rules (v3.6: admin changes need two admins).
 // Published automatically by .github/workflows/deploy-rules.yml when this file changes.
 // By hand: paste into Firebase console > Firestore Database > Rules, then Publish.
 // The app hides buttons by role, but THESE rules are what actually stop a staff member
@@ -18,6 +18,70 @@ service cloud.firestore {
     function onlyChanges(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
     function settings() { return get(/databases/$(database)/documents/settings/general).data; }
     function stampedByMe() { return request.resource.data.by == request.auth.uid; }
+
+    // ---- Admin accounts (v3.6): no single admin can remove another, or make a new one ----
+    function isAdminDoc(d) { return d.get('active', false) == true && d.get('roles', []).hasAny(['admin']); }
+    function userDoc(uid) { return /databases/$(database)/documents/users/$(uid); }
+    function adminsPath() { return /databases/$(database)/documents/meta/admins; }
+    function soleAdmin() { return get(adminsPath()).data.uids == [request.auth.uid]; }
+    function listedAfter(uid) { return getAfter(adminsPath()).data.uids.hasAny([uid]); }
+    function reqPath(id) { return /databases/$(database)/documents/adminRequests/$(id); }
+    // Ready: two admins (never the person it is about) approved it, or it was raised with a
+    // 3-day wait (only two admins) and the wait is over without anyone blocking it.
+    function reqReady(r) {
+      return r.status == 'pending'
+        && (r.approvals.size() >= 2 || (r.waitUntil > 0 && request.time.toMillis() >= r.waitUntil));
+    }
+    // The change being written is the one a ready request asked for, and the request is closed in the same write
+    function reqUsed(id, uid, types) {
+      return id is string && id != ''
+        && reqReady(get(reqPath(id)).data)
+        && get(reqPath(id)).data.target == uid
+        && get(reqPath(id)).data.type in types
+        && getAfter(reqPath(id)).data.status == 'done';
+    }
+    // An account whose password was just reset cannot approve admin changes for 2 hours,
+    // unless another admin has confirmed the reset.
+    function frozen() {
+      return me().get('resetAt', 0) > request.time.toMillis() - 7200000 && me().get('resetConfirmed', false) != true;
+    }
+    function resetKeysTouched() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny(['resetAt', 'resetBy', 'replaces', 'resetConfirmed', 'resetConfirmedBy', 'resetConfirmedAt']);
+    }
+    // The new login that takes over an admin account (password reset by one admin, or an approved handover)
+    function takesOverAdmin(uid) {
+      let n = request.resource.data;
+      let old = n.get('replaces', '');
+      return old is string && old != ''
+        && isAdminDoc(get(userDoc(old)).data)
+        && getAfter(userDoc(old)).data.get('handedOverTo', '') == uid
+        && listedAfter(uid)
+        && (getAfter(userDoc(old)).data.get('endedReason', '') == 'handover'
+            || (n.get('resetBy', '') == request.auth.uid && n.get('resetAt', 0) > request.time.toMillis() - 600000));
+    }
+    // The old login of an admin account that is being removed, reset or handed over
+    function leavesAdmin(uid) {
+      let n = request.resource.data;
+      let why = n.get('endedReason', '');
+      return (why == 'password_reset' && getAfter(userDoc(n.get('handedOverTo', 'none'))).data.get('replaces', '') == uid)
+        || (why == 'handover' && reqUsed(n.get('adminReq', ''), uid, ['handover']))
+        || (why != 'handover' && why != 'password_reset' && reqUsed(n.get('adminReq', ''), uid, ['remove']));
+    }
+    function adminsChangeOk() {
+      let o = resource.data.uids.toSet();
+      let n = request.resource.data.uids.toSet();
+      let add = request.resource.data.get('added', '');
+      let rem = request.resource.data.get('removed', '');
+      return n.difference(o) == (add == '' ? [].toSet() : [add].toSet())
+        && o.difference(n) == (rem == '' ? [].toSet() : [rem].toSet())
+        && (add == '' || isAdminDoc(getAfter(userDoc(add)).data))
+        && (rem == '' || !isAdminDoc(getAfter(userDoc(rem)).data));
+    }
+    function unOwnerFree(u, name, deleting) {
+      return u == request.auth.uid || !exists(userDoc(u)) || !isAdminDoc(get(userDoc(u)).data)
+        || !isAdminDoc(getAfter(userDoc(u)).data)
+        || (deleting && getAfter(userDoc(u)).data.get('username', '') != name);
+    }
 
     // The nightly rate of the room a stay is in, as set by the owner
     function typeRate(roomId) {
@@ -51,14 +115,59 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Who the admins are. It changes only together with that admin's own account (see the users rules).
+    match /meta/admins {
+      allow read: if active();
+      allow create: if !exists(adminsPath()) && request.resource.data.uids.hasAny([request.auth.uid])
+        && (admin() || (signedIn() && !exists(/databases/$(database)/documents/meta/setup)
+                        && existsAfter(/databases/$(database)/documents/meta/setup)));
+      allow update: if admin() && adminsChangeOk();
+      allow delete: if false;
+    }
+
+    // Admin changes that need two admins: making someone admin, removing an admin (deactivating
+    // or taking the role away) and handing an admin account to a new person.
+    match /adminRequests/{id} {
+      allow read: if admin();
+      allow create: if admin() && stampedByMe() && !frozen()
+        && request.resource.data.status == 'pending'
+        && request.resource.data.approvals == [request.auth.uid]
+        && request.resource.data.target != request.auth.uid
+        && request.resource.data.type in ['grant', 'remove', 'handover']
+        && (request.resource.data.waitUntil == 0
+            || request.resource.data.waitUntil >= request.time.toMillis() + 259200000 - 600000);
+      allow update: if admin() && resource.data.status == 'pending' && (
+          (onlyChanges(['approvals', 'approvedAt']) && !frozen()
+            && request.auth.uid != resource.data.target
+            && !resource.data.approvals.hasAny([request.auth.uid])
+            && request.resource.data.approvals == resource.data.approvals.concat([request.auth.uid]))
+          || (onlyChanges(['status', 'closedBy', 'closedAt']) && request.resource.data.closedBy == request.auth.uid
+              && ((request.resource.data.status == 'blocked' && request.auth.uid != resource.data.by)
+                  || (request.resource.data.status == 'cancelled' && request.auth.uid == resource.data.by)
+                  || (request.resource.data.status == 'done' && reqReady(resource.data))))
+        );
+      allow delete: if false;
+    }
+
     match /users/{uid} {
       allow read: if active() || (signedIn() && request.auth.uid == uid);
-      allow create: if admin()
+      allow create: if (admin() && (!isAdminDoc(request.resource.data)
+                                    || (soleAdmin() && listedAfter(uid))
+                                    || takesOverAdmin(uid)))
         || (signedIn() && request.auth.uid == uid
             && !exists(/databases/$(database)/documents/meta/setup)
             && existsAfter(/databases/$(database)/documents/meta/setup));
-      allow update: if admin()
-        || (signedIn() && request.auth.uid == uid && onlyChanges(['onboarded', 'onboardedAt', 'inviteCode']));
+      allow update: if (signedIn() && request.auth.uid == uid && onlyChanges(['onboarded', 'onboardedAt', 'inviteCode', 'photo', 'photoAt']))
+        || (admin() && !resetKeysTouched() && (
+              isAdminDoc(resource.data) == isAdminDoc(request.resource.data)
+              || (isAdminDoc(request.resource.data) && listedAfter(uid)
+                  && (soleAdmin() || reqUsed(request.resource.data.get('adminReq', ''), uid, ['grant'])))
+              || (!isAdminDoc(request.resource.data) && !listedAfter(uid) && leavesAdmin(uid))))
+        // another admin (not the one who did the reset, not the account itself) confirms a password reset
+        || (admin() && !frozen() && uid != request.auth.uid
+            && onlyChanges(['resetConfirmed', 'resetConfirmedBy', 'resetConfirmedAt'])
+            && request.resource.data.resetConfirmed == true && request.resource.data.resetConfirmedBy == request.auth.uid
+            && resource.data.get('resetBy', '') != request.auth.uid);
       allow delete: if false;
     }
 
@@ -79,8 +188,10 @@ service cloud.firestore {
         || (signedIn() && request.resource.data.uid == request.auth.uid
             && !exists(/databases/$(database)/documents/meta/setup)
             && existsAfter(/databases/$(database)/documents/meta/setup));
-      allow update: if admin();
-      allow delete: if admin();
+      // An admin's username cannot be pointed at another login or removed by another admin
+      // (that would lock them out), except while that admin account is being reset or handed over.
+      allow update: if admin() && unOwnerFree(resource.data.get('uid', 'none'), name, false);
+      allow delete: if admin() && unOwnerFree(resource.data.get('uid', 'none'), name, true);
     }
 
     match /settings/{doc} {

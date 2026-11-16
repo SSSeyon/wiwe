@@ -24,6 +24,7 @@
 <script src="js/shifts.js" defer></script>
 <script src="js/phone.js" defer></script>
 <script src="js/receipt.js" defer></script>
+<script src="js/people.js" defer></script>
 </head>
 <body>
 
@@ -35,6 +36,7 @@
   <header class="appbar">
     <button type="button" class="home-link" onclick="go('home')" aria-label="Home"><img class="logo-img" src="img/logo.png" alt="Wiwe Apartments"></button>
     <button type="button" class="sync" id="syncBadge" onclick="forceSync()"><span class="dot"></span><span id="syncText">Connecting…</span></button>
+    <button type="button" class="bell" id="bellBtn" onclick="openBell()" aria-label="Things waiting for you"></button>
     <div class="me" id="meBox"></div>
   </header>
   <div class="main">

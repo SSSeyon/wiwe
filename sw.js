@@ -1,6 +1,6 @@
 // Bump CACHE when you deploy changes so phones pick up the new version.
-const CACHE = 'wiwe-v3.5.1';
-const SHELL = ['./', 'index.html', 'styles.css', 'config.js', 'js/core.js', 'js/front.js', 'js/ops.js', 'js/admin.js', 'js/building.js', 'js/shifts.js', 'js/phone.js', 'js/receipt.js', 'manifest.json', 'img/icon-192.png', 'img/icon-512.png', 'img/logo.png', 'img/building.jpg'];
+const CACHE = 'wiwe-v3.6.0';
+const SHELL = ['./', 'index.html', 'styles.css', 'config.js', 'js/core.js', 'js/front.js', 'js/ops.js', 'js/admin.js', 'js/building.js', 'js/shifts.js', 'js/phone.js', 'js/receipt.js', 'js/people.js', 'manifest.json', 'img/icon-192.png', 'img/icon-512.png', 'img/logo.png', 'img/building.jpg'];
 const SLOW_MS = 3000; // on a weak signal, stop waiting for the network after this long and use the saved copy
 
 self.addEventListener('install', e => {

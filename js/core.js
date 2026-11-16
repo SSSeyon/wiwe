@@ -1,4 +1,4 @@
-const APP_VERSION = '3.5.1';
+const APP_VERSION = '3.6.0';
 
 /* =========================================================
    Constants
@@ -71,9 +71,9 @@ if (CONFIGURED && SDK_OK) {
 const S = {
   user: null, me: null, view: null, params: {}, tab: {},
   settings: Object.assign({}, DEFAULT_SETTINGS),
-  data: { rooms: [], roomTypes: [], stays: [], payments: [], tasks: [], jobs: [], assets: [], vendors: [], items: [], moves: [], expenses: [], incidents: [], users: [], laundry: [], shifts: [], oldUnconfirmed: [], oldPending: [], debtors: [] },
+  data: { rooms: [], roomTypes: [], stays: [], payments: [], tasks: [], jobs: [], assets: [], vendors: [], items: [], moves: [], expenses: [], incidents: [], users: [], laundry: [], shifts: [], oldUnconfirmed: [], oldPending: [], debtors: [], adminReqs: [] },
   unsub: [], meta: {}, pending: false, fromCache: true, online: navigator.onLine,
-  adminUntil: 0, photoCache: {}, form: {}
+  photoCache: {}, form: {}
 };
 
 /* =========================================================
@@ -147,7 +147,9 @@ var ICONS = {
   search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/>',
   printer: '<path d="M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/>',
   check: '<path d="M5 12l5 5L20 7"/>',
-  plus: '<path d="M12 5v14M5 12h14"/>'
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+  book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>'
 };
 function icon(name, size) { return '<svg aria-hidden="true" width="' + (size || 18) + '" height="' + (size || 18) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[name] || '') + '</svg>'; }
 
@@ -569,7 +571,6 @@ function showLogin(mode, msg) {
       field('Your name', input('su-name', '', 'required autocomplete="name"')) +
       field('Username', input('su-user', '', 'required autocapitalize="none" autocomplete="username"'), '', 'Letters and numbers only, e.g. owner') +
       field('Password', input('su-pin', '', 'required minlength="6" type="password" autocomplete="new-password"'), '', 'At least 6 characters') +
-      field('Admin code (6 digits)', input('su-code', '', 'required inputmode="numeric" pattern="[0-9]{6}" type="password"'), '', 'A separate code that unlocks admin settings. Keep it different from your password.') +
       '<button class="btn primary block" type="submit" id="su-btn">Create owner account</button>' +
       '<button class="btn block" type="button" onclick="showLogin(\'login\')">I already have an account</button>' +
       (msg ? '<div class="note bad">' + esc(msg) + '</div>' : '') + '</form></div>';
@@ -604,10 +605,9 @@ async function checkSetup() {
 }
 
 async function doSetup() {
-  var name = val('su-name'), user = cleanUsername(val('su-user')), pin = val('su-pin'), code = val('su-code');
+  var name = val('su-name'), user = cleanUsername(val('su-user')), pin = val('su-pin');
   if (!user) return showLogin('setup', 'Choose a username (letters and numbers).');
   if (!validPassword(pin)) return showLogin('setup', 'Password must be at least 6 characters.');
-  if (!/^[0-9]{6}$/.test(code)) return showLogin('setup', 'Admin code must be 6 digits.');
   $('su-btn').disabled = true; $('su-btn').textContent = 'Setting up…';
   try {
     var email = newLoginEmail();
@@ -616,10 +616,10 @@ async function doSetup() {
     b.set(db.collection('users').doc(uid), { name: name, username: user, roles: ['admin'], active: true, createdAt: now });
     b.set(db.collection('usernames').doc(user), { uid: uid, email: email, at: now });
     b.set(db.collection('meta').doc('setup'), { done: true, by: uid, at: now });
+    b.set(db.collection('meta').doc('admins'), { uids: [uid], added: uid, removed: '', at: now });
     await b.commit();
     var b2 = db.batch();
     b2.set(db.collection('settings').doc('general'), DEFAULT_SETTINGS);
-    b2.set(db.collection('settings').doc('security'), { codeHash: await sha256(code + '|wiwe-admin') });
     var tStd = db.collection('roomTypes').doc(), tKit = db.collection('roomTypes').doc();
     var baseItems = [{ name: 'Bath towels', qty: 2 }, { name: 'Hand towels', qty: 2 }, { name: 'Bedsheets + pillowcases', qty: 4 }, { name: 'TV remote', qty: 1 }, { name: 'AC remote', qty: 1 }, { name: 'Key card', qty: 1 }];
     var kitItems = baseItems.concat([{ name: 'Plates', qty: 4 }, { name: 'Cups / glasses', qty: 4 }, { name: 'Cutlery set', qty: 4 }, { name: 'Pot', qty: 2 }, { name: 'Frying pan', qty: 1 }, { name: 'Kettle', qty: 1 }]);
@@ -635,7 +635,7 @@ async function doSetup() {
   } catch (e) { showLogin('setup', e.message || String(e)); }
 }
 
-async function signOut() { if (!(await ask({ title: 'Sign out?', text: 'You will need your username and password to come back in.', ok: 'Sign out' }))) return; stopListeners(); S.adminUntil = 0; await auth.signOut(); }
+async function signOut() { if (!(await ask({ title: 'Sign out?', text: 'You will need your username and password to come back in.', ok: 'Sign out' }))) return; stopListeners(); await auth.signOut(); }
 
 /* =========================================================
    Live data
@@ -694,6 +694,7 @@ function startListeners() {
     listen('debtors', c('stays').where('balance', '>', 0));
     listen('oldPending', c('expenses').where('status', '==', 'pending').limit(100));
   }
+  if (isAdmin() && typeof startAdminListeners === 'function') startAdminListeners();
   S.unsub.push(c('settings').doc('general').onSnapshot(function (d) { if (d.exists) S.settings = Object.assign({}, DEFAULT_SETTINGS, clean(d.data())); scheduleRender(); }));
 }
 function paintSync() {
@@ -787,7 +788,7 @@ var NAV = [
   { id: 'inventory', label: 'Inventory', desc: 'Supplies and items for sale', roles: ['manager', 'frontdesk'] },
   { id: 'expenses', label: 'Expenses', desc: 'Spending and approvals', roles: ['manager', 'frontdesk'] },
   { id: 'reports', label: 'Reports', desc: 'Money and occupancy', roles: ['manager'] },
-  { id: 'admin', label: 'Admin settings', desc: 'Rooms, staff, codes, backup', roles: [] }
+  { id: 'admin', label: 'Admin settings', desc: 'Rooms, staff, receipt, backup', roles: [] }
 ];
 var VIEWS = {}; // filled by front.js, ops.js, admin.js: { title, eyebrow?, render(), actions?() }
 
@@ -872,12 +873,13 @@ function render() {
   moneyFields($('view'));
   onePrimary([$('topActions'), $('view')]);
   paintBottomBar();
+  if (typeof paintBell === 'function') paintBell();
   if (S.view === 'home') fitHome();
   if (typeof afterRender === 'function') afterRender();
   document.title = (typeof v.title === 'function' ? v.title() : v.title) + ' · Wiwe';
 }
 function paintMe() {
-  $('meBox').innerHTML = '<button type="button" class="me-btn" onclick="go(\'account\')" title="My account and settings" aria-label="My account and settings, ' + esc(S.me.name) + '"><span class="avatar">' + esc(initials(S.me.name)) + '</span><span class="me-text"><strong>' + esc(S.me.name) + '</strong><span>' + esc((S.me.roles || []).map(function (r) { return ROLES[r]; }).join(', ')) + '</span></span></button>';
+  $('meBox').innerHTML = '<button type="button" class="me-btn" onclick="go(\'account\')" title="My account and settings" aria-label="My account and settings, ' + esc(S.me.name) + '">' + avatar(S.me) + '<span class="me-text"><strong>' + esc(S.me.name) + '</strong><span>' + esc((S.me.roles || []).map(function (r) { return ROLES[r]; }).join(', ')) + '</span></span></button>';
   paintDarkIcon();
 }
 /* ---------- My account: settings for the signed-in person ---------- */
@@ -892,11 +894,11 @@ VIEWS.account = {
     var opt = function (on, click, label, extra) { return '<button type="button" class="acct-opt' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="' + click + '">' + (extra || '') + esc(label) + '</button>'; };
     var mine = NAV.filter(function (n) { return has.apply(null, n.roles); });
     var h = '<div class="acct-col">';
-    h += '<div class="card"><div class="acct-head"><span class="avatar big">' + esc(initials(me.name)) + '</span><div class="main-t"><strong>' + esc(me.name) + '</strong><span>@' + esc(me.username || '') + ' · ' + esc((me.roles || []).map(function (r) { return ROLES[r]; }).join(', ')) + (me.phone ? ' · ' + esc(me.phone) : '') + '</span></div></div>' +
-      '<div class="acct-opts mt-3"><button class="btn" type="button" onclick="openMyPassword()">' + icon('key') + 'Change password</button>' +
+    h += '<div class="card"><div class="acct-head"><button type="button" class="avatar-btn" onclick="pickMyPhoto()" aria-label="' + (me.photo ? 'Change' : 'Add') + ' your photo">' + avatar(me, true) + '<span class="avatar-edit">' + icon('camera', 14) + '</span></button><input type="file" id="me-photo-file" accept="image/*" class="hidden" onchange="setMyPhoto(this)"><div class="main-t"><strong>' + esc(me.name) + '</strong><span>@' + esc(me.username || '') + ' · ' + esc((me.roles || []).map(function (r) { return ROLES[r]; }).join(', ')) + (me.phone ? ' · ' + esc(me.phone) : '') + '</span></div></div>' +
+      '<div class="acct-opts mt-3"><button class="btn" type="button" onclick="pickMyPhoto()">' + icon('camera') + (me.photo ? 'Change photo' : 'Add photo') + '</button>' + (me.photo ? '<button class="btn" type="button" onclick="removeMyPhoto()">Remove photo</button>' : '') + '<button class="btn" type="button" onclick="openMyPassword()">' + icon('key') + 'Change password</button>' +
       '<button class="btn danger" type="button" onclick="signOut()">' + icon('logout') + 'Sign out</button>' +
-      (isAdmin() ? '<button class="btn" type="button" onclick="go(\'admin\')">' + icon('admin') + 'Admin settings</button>' : '') + '</div>' +
-      '<div class="muted mt-2">' + (isAdmin() ? 'Change names, roles and usernames in Admin settings → Staff.' : 'To change your name, role or username, or if you forget your password, ask the owner.') + '</div></div>';
+      (isAdmin() ? '<button class="btn" type="button" onclick="go(\'admin\')">' + icon('admin') + 'Admin settings</button>' : '') + '<button class="btn" type="button" onclick="go(\'manual\')">' + icon('book') + 'How to use the app</button></div>' +
+      '<div class="muted mt-2">' + (isAdmin() ? 'Change names, roles and usernames in Admin settings → Staff.' : 'To change your name, role or username, or if you forget your password, ask an admin.') + '</div></div>';
     h += '<div class="card"><h2>Appearance (this device)</h2>' +
       '<div class="field">Colour scheme<div class="acct-opts">' + ['colour', 'mono', 'cream'].map(function (k) { return opt(t === k, "setTheme('" + k + "')", THEME_NAMES[k], '<span class="sw sw-' + k + '"></span>'); }).join('') + '</div></div>' +
       '<div class="acct-two"><div class="field">Dark mode<div class="acct-opts">' + opt(!dark, dark ? 'toggleDark()' : '', 'Off', icon('sun', 16)) + opt(dark, dark ? '' : 'toggleDark()', 'On', icon('moon', 16)) + '</div></div>' +

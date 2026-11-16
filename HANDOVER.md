@@ -429,3 +429,20 @@ This reverses the "No owner confirmation" part of section 22.
   - Confirm all on the payments page uses it too (it was a batch of up to 200 owner-only updates).
 - **Rule of thumb:** keep batches to a few writes. Anything that loops over many owner-only documents should use `writeEach`.
 - Tested in the local mock with batches over 6 writes made to fail: a 12-record clean-up and Confirm all of 9 payments both went through.
+
+## 29. v3.6.0: admin approvals, the bell, profile photos, the manual, no admin code
+
+- **No admin code.** Admin settings open straight away for admin accounts; the database rules already limit them to admins. First-time setup no longer asks for a code. `settings/security` (the old code hash) is no longer used.
+- **Admin changes need two admins** (`js/people.js`, rules `adminRequests`, `meta/admins`):
+  - Making someone an admin, removing an admin (deactivating or taking the role away) and handing an admin account to a new person create an `adminRequests` document. The admin who asks counts as one approval; a second admin (never the person it is about) approves and the change happens in the same write. The person it is about, or any admin other than the asker, can Block; the asker can Withdraw.
+  - With only two admins, a removal or handover gets `waitUntil` = 3 days, after which the asker can carry it out unless it was blocked.
+  - While there is only one admin, they can make a second admin directly. The rules know this from `meta/admins` (the list of admin uids), which changes only in the same write as the admin's own `users` document (`added`/`removed` name the uid).
+  - The first admin to open v3.6 writes `meta/admins` from the current active admins.
+  - Another admin cannot point an admin's username at a different login or delete it (that would lock them out), except as part of a reset or approved handover.
+- **Admin password resets:** one admin can reset another admin's password. The new login gets `resetAt`/`resetBy`/`replaces`, and cannot create or approve admin requests for 2 hours unless a second admin (not the one who reset it) taps Confirm reset (`resetConfirmed`).
+- **Bell** (top bar): what is waiting for the signed-in person, by role: admin requests and resets to confirm (admins), the Today alerts (managers; owner-only items only for admins), arrivals, departures, inspections and shift handovers (front desk), cleaning tasks assigned to them or unassigned (housekeeping), repair jobs assigned to them or unassigned (maintenance).
+- **Profile photos:** Me → Add photo. Cropped to a 240px square JPEG and stored as `photo` on the user's own document (the rules let a user change only that and the onboarding fields). Shown in the top bar, on Me and in Staff.
+- **Manual:** Me → How to use the app (`VIEWS.manual`, `MANUAL` in people.js). Each section lists the roles it is for; only sections the account can use are shown.
+- **Rules publishing:** `scripts/deploy-rules.mjs` now fails (instead of quietly succeeding) when `FIREBASE_SERVICE_ACCOUNT` is missing. The v3.5 rules never went live because of this. The urgent-alerts and daily-summary jobs also finish in under a second, which suggests the same secrets are missing for them.
+- **The app checks the rules** by reading `meta/admins` (only allowed under the v3.6 rules) and shows the "Security rules need updating" alert if it is refused.
+- Tested in the local mock (which does not run the rules): setup without a code, a sole admin adding an admin, a grant needing approval, block, deactivation, the 3-day wait with two admins, a reset with the 2-hour hold, the bell and manual for each role, and photos. The rules themselves have not been run; check for errors when publishing them.

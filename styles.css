@@ -924,3 +924,35 @@ form.stepped>.step-bar{margin-top:auto}
 .cl-row .main-t{display:flex;flex-direction:column;min-width:0}
 .cl-row .main-t strong{font-size:0.875rem}
 .cl-row .main-t span{font-size:0.75rem;color:var(--dim);overflow-wrap:anywhere}
+
+/* v3.6: bell, profile photos, manual */
+.bell{position:relative;display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:999px;border:none;cursor:pointer;background:var(--grey-bg);color:var(--text);flex-shrink:0}
+.bell:hover{filter:brightness(.95)}
+.bell:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.bell-n{position:absolute;top:-3px;right:-3px;min-width:19px;height:19px;padding:0 5px;border-radius:999px;background:var(--bad);color:#fff;font-size:0.6875rem;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1}
+body[data-theme=colour] .appbar .bell{background:rgba(255,255,255,.18);color:#fff}
+body.dark-mode .bell-n{color:#1a1a1a}
+.avatar.has-photo{background:var(--grey-bg);overflow:hidden;padding:0}
+.avatar img{width:100%;height:100%;object-fit:cover;border-radius:999px;display:block}
+.list-row > .avatar + .main-t{flex:1;min-width:0}
+.avatar-btn{position:relative;background:none;border:none;padding:0;cursor:pointer;border-radius:999px;flex-shrink:0}
+.avatar-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.avatar-edit{position:absolute;right:-2px;bottom:-2px;width:22px;height:22px;border-radius:999px;background:var(--surface);color:var(--text);display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.manual{max-width:760px}
+.manual-toc ol{margin:0;padding-left:1.4em;columns:2;column-gap:28px}
+.manual-toc li{margin:4px 0;break-inside:avoid}
+.manual-toc a{color:var(--accent)}
+.manual-sec summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between}
+.manual-sec summary::-webkit-details-marker{display:none}
+.manual-sec summary::after{content:'+';font-size:1.25rem;color:var(--muted)}
+.manual-sec[open] summary::after{content:'−'}
+.manual-sec summary h2{margin:0}
+.manual-sec ul{margin:10px 0 0;padding-left:1.2em;line-height:1.55}
+.manual-sec li{margin:6px 0;max-width:68ch}
+@media (max-width:600px){.manual-toc ol{columns:1}}
+@media (max-width:700px){
+  .staff-row{flex-wrap:wrap}
+  .staff-row > .main-t{flex:1;min-width:0}
+  .staff-row > .row,.staff-row > .btn{flex-basis:100%;justify-content:flex-end;flex-wrap:wrap}
+  .staff-row > .btn{flex-basis:auto;margin-left:auto}
+}
