@@ -461,3 +461,10 @@ This reverses the "No owner confirmation" part of section 22.
 - A saved key is dropped once that item is no longer waiting, so if the same thing comes back later (a new overstay, a new task for the same room) it shows again.
 - "Show again" at the bottom of the bell list brings back everything that was hidden.
 - Fixed: tapping a bell item that opens a window (an arriving guest, a repair job) used to close that window straight away, because the bell closed itself after the item's own action. The bell now closes first.
+
+## 32. v3.7.2: opened bell items are cleared on every device
+
+- Tapped bell items are now saved as `bellSeen` on the person's own `users` document: a map of short codes (a hash of `tag|title`) to the time tapped. The live account listener carries it to every device they are signed in on. "Show again" clears it everywhere.
+- The localStorage copy from v3.7.1 stays as a fallback: it is used until the account has a `bellSeen` (offline, or before the v3.7.2 rules are published). A refused write is ignored quietly.
+- Codes for items no longer waiting are dropped, but only once the app has been open 20 seconds and is online, so a device still loading its lists does not wipe what another device saved.
+- **Rules:** a user may now also change `bellSeen` on their own document (a map, at most 300 entries). Until these rules are published, clearing works per phone only.

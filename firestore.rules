@@ -1,5 +1,5 @@
 rules_version = '2';
-// Wiwe Apartments: Firestore security rules (v3.6: admin changes need two admins).
+// Wiwe Apartments: Firestore security rules (v3.6: admin changes need two admins; v3.7.2: bellSeen).
 // Published automatically by .github/workflows/deploy-rules.yml when this file changes.
 // By hand: paste into Firebase console > Firestore Database > Rules, then Publish.
 // The app hides buttons by role, but THESE rules are what actually stop a staff member
@@ -157,7 +157,8 @@ service cloud.firestore {
         || (signedIn() && request.auth.uid == uid
             && !exists(/databases/$(database)/documents/meta/setup)
             && existsAfter(/databases/$(database)/documents/meta/setup));
-      allow update: if (signedIn() && request.auth.uid == uid && onlyChanges(['onboarded', 'onboardedAt', 'inviteCode', 'photo', 'photoAt']))
+      allow update: if (signedIn() && request.auth.uid == uid && onlyChanges(['onboarded', 'onboardedAt', 'inviteCode', 'photo', 'photoAt', 'bellSeen'])
+                        && request.resource.data.get('bellSeen', {}) is map && request.resource.data.get('bellSeen', {}).size() <= 300)
         || (admin() && !resetKeysTouched() && (
               isAdminDoc(resource.data) == isAdminDoc(request.resource.data)
               || (isAdminDoc(request.resource.data) && listedAfter(uid)

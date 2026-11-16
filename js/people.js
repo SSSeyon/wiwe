@@ -298,19 +298,32 @@ function bellItems() {
   var seen = {};
   return out.filter(function (a) { var k = a.tag + '|' + a.t; if (seen[k]) return false; seen[k] = 1; a.key = k; return true; });
 }
-// Items the person has tapped leave the bell. Kept on this phone, per account. An item that goes away
-// and later comes back (a new overstay, a new task for the same room) shows again.
+// Items the person has tapped leave the bell, on every device: saved as `bellSeen` on their own account
+// (a map of short codes → when tapped), with a copy on the phone for when it is offline.
+// An item that goes away and later comes back (a new overstay, a new task for the same room) shows again.
+var bellStart = Date.now();
+function bellCode(k) { var h = 5381; for (var i = 0; i < k.length; i++) h = ((h << 5) + h + k.charCodeAt(i)) | 0; return 'b' + (h >>> 0).toString(36); }
 function bellSeenKey() { return 'wiwe-bell-seen-' + (S.user ? S.user.uid : ''); }
-function bellSeen() { try { return JSON.parse(localStorage.getItem(bellSeenKey()) || '{}') || {}; } catch (e) { return {}; } }
-function bellSaveSeen(m) { try { localStorage.setItem(bellSeenKey(), JSON.stringify(m)); } catch (e) { } }
-function bellMarkSeen(k) { var m = bellSeen(); m[k] = Date.now(); bellSaveSeen(m); paintBell(); }
+function bellLocal() { try { return JSON.parse(localStorage.getItem(bellSeenKey()) || '{}') || {}; } catch (e) { return {}; } }
+// The account's copy wins once it exists, so "Show again" on one device brings items back on all of them
+function bellSeen() { return Object.assign({}, S.me && S.me.bellSeen ? S.me.bellSeen : bellLocal()); }
+function bellSaveSeen(m) {
+  try { localStorage.setItem(bellSeenKey(), JSON.stringify(m)); } catch (e) { }
+  if (S.me) S.me.bellSeen = m;
+  // quietly kept on the phone only if the database refuses (security rules older than v3.7.2)
+  if (S.user) db.collection('users').doc(S.user.uid).update({ bellSeen: m }).catch(function () { });
+}
+function bellMarkSeen(k) { var m = bellSeen(); m[bellCode(k)] = Date.now(); bellSaveSeen(m); paintBell(); }
 function bellPending() {
   var all = bellItems(), m = bellSeen(), now = {}, changed = false;
-  all.forEach(function (a) { now[a.key] = 1; });
-  // forget what is no longer waiting, so it shows again if it comes back
-  Object.keys(m).forEach(function (k) { if (!now[k]) { delete m[k]; changed = true; } });
-  if (changed && all.length) bellSaveSeen(m);
-  return { list: all.filter(function (a) { return !m[a.key]; }), cleared: all.filter(function (a) { return m[a.key]; }).length };
+  all.forEach(function (a) { a.code = bellCode(a.key); now[a.code] = 1; });
+  // forget what is no longer waiting, so it shows again if it comes back.
+  // Not in the first 20 seconds: the lists may still be loading and an item may only look gone.
+  if (Date.now() - bellStart > 20000 && navigator.onLine !== false) {
+    Object.keys(m).forEach(function (k) { if (!now[k]) { delete m[k]; changed = true; } });
+    if (changed) bellSaveSeen(m);
+  }
+  return { list: all.filter(function (a) { return !m[a.code]; }), cleared: all.filter(function (a) { return m[a.code]; }).length };
 }
 function bellShowAll() { bellSaveSeen({}); paintBell(); openBell(); }
 function paintBell() {
@@ -341,7 +354,7 @@ function openBell() {
 var MANUAL = [
   { id: 'start', t: 'Getting around', who: 'all', p: [
     'Home shows the parts of the app you can use. On a phone, the bar at the bottom has Home, your main page, the Do button for quick actions, and Me.',
-    'The bell at the top shows what is waiting for you: tasks assigned to you and things that need your attention. Tap an item to open it; it then leaves the list on that phone. Show again at the bottom brings opened items back.',
+    'The bell at the top shows what is waiting for you: tasks assigned to you and things that need your attention. Tap an item to open it; it then leaves the list on all your devices. Show again at the bottom brings opened items back.',
     'Summary cards at the top of a page (the boxes with a number) open a list of what makes up that number.',
     'The app works without signal. Anything you record is saved on the phone and sent when the connection is back; the badge at the top says Synced when everything has gone through.'] },
   { id: 'me', t: 'Your account', who: 'all', p: [
