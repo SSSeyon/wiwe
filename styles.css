@@ -956,3 +956,4 @@ body.dark-mode .bell-n{color:#1a1a1a}
   .staff-row > .row,.staff-row > .btn{flex-basis:100%;justify-content:flex-end;flex-wrap:wrap}
   .staff-row > .btn{flex-basis:auto;margin-left:auto}
 }
+#ci-xnights:empty,#rv-per:empty,#rv-warn:empty{display:none}

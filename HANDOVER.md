@@ -446,3 +446,11 @@ This reverses the "No owner confirmation" part of section 22.
 - **Rules publishing:** `scripts/deploy-rules.mjs` now fails (instead of quietly succeeding) when `FIREBASE_SERVICE_ACCOUNT` is missing. The v3.5 rules never went live because of this. The urgent-alerts and daily-summary jobs also finish in under a second, which suggests the same secrets are missing for them.
 - **The app checks the rules** by reading `meta/admins` (only allowed under the v3.6 rules) and shows the "Security rules need updating" alert if it is refused.
 - Tested in the local mock (which does not run the rules): setup without a code, a sole admin adding an admin, a grant needing approval, block, deactivation, the 3-day wait with two admins, a reset with the 2-hour hold, the bell and manual for each role, and photos. The rules themselves have not been run; check for errors when publishing them.
+
+## 30. v3.7.0: each room in a group booking can have its own nights
+
+- **New reservation:** when more than one room is ticked, a "Nights per room" box appears with one number per room. Each box follows the main Nights until it is changed. Each room's stay gets its own `nights` and `checkOutDate`; the deposit is still shared by cost, now using each room's own nights.
+- A room is closed for ticking only if it is taken on the first night. If it is free for fewer nights than asked, it shows "booked from …", and a warning says how many nights it is free for. Saving is refused until the nights fit.
+- **Check-in:** each extra room has its own "Nights in Room …" box in the Stay part. A room coming from a group reservation starts at its booked nights; a room added at the desk follows the main Nights until changed.
+- Receipts, the group box and the stays list already worked per room, so they show the different dates without changes.
+- Tested in the local mock: a 3-room booking at 2/1/2 nights with the deposit split 20,000/10,000/20,000, check-in of the group with an extra walk-in room, the receipt, and the "free for 2 nights at most" warning.

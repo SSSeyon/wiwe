@@ -164,6 +164,7 @@ function openCheckIn(roomId, reservationId) {
     (notReady.length ? '<div class="note warn">Room ' + esc(notReady.join(', ')) + ' in this booking ' + (notReady.length > 1 ? 'are' : 'is') + ' not Ready yet. Check ' + (notReady.length > 1 ? 'them' : 'it') + ' in from ' + (notReady.length > 1 ? 'their own reservations' : 'its own reservation') + ' when ready.</div>' : '') + '</details>' +
     field('Nights', input('ci-nights', nights, 'type="number" min="1" required oninput="ciCalc()"')) +
     '<div class="field">Check-out<span class="static" id="ci-out"></span></div>' +
+    '<div class="fields span-all" id="ci-xnights"></div>' +
     '<div class="field">Rate per night<span class="static" id="ci-rate"></span></div>' +
     field('Discount (₦)', input('ci-disc', '', 'inputmode="numeric" oninput="ciCalc()"'), '', (isAdmin() ? '' : 'Needs a reason. The owner will approve it. ') + 'With several rooms, it comes off the whole booking.') +
     field('Discount reason', input('ci-discr', '', '')) +
@@ -212,15 +213,32 @@ function ciExtras() {
 }
 // The reservation a room is being checked in from: the main one, or another room of the same group booking
 function ciRvOf(r, i) { return i === 0 ? (S.form.rvId ? findStay(S.form.rvId) : null) : ((S.form.groupRv || {})[r.id] || null); }
+// Nights for a room being checked in: the main Nights for the first room, each extra room its own box
+function ciN(r, i) { var n = Math.max(1, num(val('ci-nights'))), b = i ? $('ci-xn-' + r.id) : null; return b ? Math.max(1, num(b.value) || n) : n; }
 function ciCalc() {
   var r = byId(S.data.rooms, val('ci-room')); if (!r) return;
   document.querySelectorAll('input[name="ci-x"]').forEach(function (i) { var me = i.value === r.id; if (me) i.checked = false; i.closest('label').classList.toggle('hidden', me); });
   var rooms = [r].concat(ciExtras()), rate = Number(roomType(r).rate) || 0, n = Math.max(1, num(val('ci-nights'))), d = num(val('ci-disc')), t = todayStr();
   var out = addDays(t, n), caution = S.settings.cautionEnabled ? num(val('ci-caution')) : 0, cost = 0, prior = 0, lines = '', clashes = '', noRate = [];
+  // one nights box and one key card box per extra room, keeping what was already typed.
+  // A room from the reservation starts at its booked nights; any other follows the main Nights until changed.
+  var xc = $('ci-xcards'), xn = $('ci-xnights'), sig = rooms.slice(1).map(function (x) { return x.id; }).join(',');
+  if (xc && xn && xc.dataset.sig !== sig) {
+    var keep = {}; xc.querySelectorAll('input').forEach(function (i) { keep[i.id] = i.value; });
+    xn.querySelectorAll('input').forEach(function (i) { if (i.dataset.touched) keep[i.id] = i.value; });
+    xc.innerHTML = rooms.slice(1).map(function (x) { var id = 'ci-xcard-' + x.id; return field('Key card for Room ' + x.number, input(id, keep[id] || '', 'required')); }).join('');
+    xn.innerHTML = rooms.slice(1).map(function (x, k) {
+      var nid = 'ci-xn-' + x.id, rv = ciRvOf(x, k + 1), set = keep[nid] || (rv && rv.nights);
+      return '<label class="field">Nights in Room ' + esc(x.number) + input(nid, set || n, 'type="number" min="1" required oninput="this.dataset.touched=1;ciCalc()"' + (set ? ' data-touched="1"' : '')) + '<span class="hint" id="ci-xout-' + x.id + '"></span></label>';
+    }).join('');
+    xc.dataset.sig = sig;
+  }
   rooms.forEach(function (x, i) {
-    var xr = Number(roomType(x).rate) || 0, rv = ciRvOf(x, i), c = overlaps(x.id, t, out, rv ? rv.id : '');
-    cost += xr * n; prior += rv ? (rv.paid || 0) : 0; if (!xr) noRate.push(x.number);
-    lines += '<div class="row between"><span>Room ' + esc(x.number) + ' · ' + n + ' night' + (n > 1 ? 's' : '') + '</span><span class="money">' + money(xr * n) + '</span></div>';
+    var nb = i ? $('ci-xn-' + x.id) : null; if (nb && !nb.dataset.touched) nb.value = n;
+    var xn = ciN(x, i), xo = addDays(t, xn), xr = Number(roomType(x).rate) || 0, rv = ciRvOf(x, i), c = overlaps(x.id, t, xo, rv ? rv.id : '');
+    var ob = $('ci-xout-' + x.id); if (ob) ob.textContent = 'Check-out ' + fmtDate(xo);
+    cost += xr * xn; prior += rv ? (rv.paid || 0) : 0; if (!xr) noRate.push(x.number);
+    lines += '<div class="row between"><span>Room ' + esc(x.number) + ' · ' + xn + ' night' + (xn > 1 ? 's' : '') + '</span><span class="money">' + money(xr * xn) + '</span></div>';
     if (c) clashes += '<div class="note bad">Room ' + esc(x.number) + ' is booked for ' + esc(c.guestName) + ' from ' + fmtDate(c.checkInDate) + '. Pick another room or fewer nights.</div>';
   });
   var total = Math.max(0, cost - d), due = Math.max(0, total - prior) + caution;
@@ -228,13 +246,6 @@ function ciCalc() {
   $('ci-rate').textContent = money(rate) + (rooms.length > 1 ? ' (Room ' + r.number + ')' : '') + (isAdmin() ? '' : ' (set by admin)');
   prefillAmount('ci-amount', due);
   var sb = $('sb-amt'); if (sb) sb.textContent = money(due);
-  // one key card box per extra room, keeping what was already typed
-  var xc = $('ci-xcards'), sig = rooms.slice(1).map(function (x) { return x.id; }).join(',');
-  if (xc && xc.dataset.sig !== sig) {
-    var keep = {}; xc.querySelectorAll('input').forEach(function (i) { keep[i.id] = i.value; });
-    xc.innerHTML = rooms.slice(1).map(function (x) { var id = 'ci-xcard-' + x.id; return field('Key card for Room ' + x.number, input(id, keep[id] || '', 'required')); }).join('');
-    xc.dataset.sig = sig;
-  }
   $('ci-sum').innerHTML = lines +
     (d ? '<div class="row between"><span>Discount</span><span class="money">-' + money(d) + '</span></div>' : '') +
     (prior ? '<div class="row between"><span>Deposit already paid</span><span class="money">-' + money(prior) + '</span></div>' : '') +
@@ -245,12 +256,12 @@ function ciCalc() {
 }async function saveCheckIn() {
   var r = byId(S.data.rooms, val('ci-room'));
   if (!r) return toast('Pick a room', true);
-  var rooms = [r].concat(ciExtras()), n = Math.max(1, num(val('ci-nights'))), t = todayStr();
+  var rooms = [r].concat(ciExtras()), ns = rooms.map(ciN), t = todayStr();
   for (var k = 0; k < rooms.length; k++) {
     var x = rooms[k], xrv = ciRvOf(x, k);
     if (x.status !== 'ready') return toast('Room ' + x.number + ' is not Ready', true);
     // A walk-in must never land on top of someone else's booking
-    var clash = overlaps(x.id, t, addDays(t, n), xrv ? xrv.id : '');
+    var clash = overlaps(x.id, t, addDays(t, ns[k]), xrv ? xrv.id : '');
     if (clash) return toast('Room ' + x.number + ' is booked for ' + clash.guestName + ' from ' + fmtDate(clash.checkInDate) + '. Pick another room or fewer nights.', true);
     if (k > 0 && !val('ci-xcard-' + x.id)) return toast('Enter the key card for Room ' + x.number, true);
   }
@@ -261,7 +272,7 @@ function ciCalc() {
   if (disc > 0 && !discR) return toast('Give a reason for the discount', true);
   // The discount sits on the main room; each room keeps its own bill
   var items = rooms.map(function (x, i) {
-    var type = roomType(x), rate = Number(type.rate) || 0, rv = ciRvOf(x, i), tot = Math.max(0, rate * n - (i === 0 ? disc : 0)), pr = rv ? (rv.paid || 0) : 0;
+    var type = roomType(x), rate = Number(type.rate) || 0, rv = ciRvOf(x, i), tot = Math.max(0, rate * ns[i] - (i === 0 ? disc : 0)), pr = rv ? (rv.paid || 0) : 0;
     return { r: x, type: type, rate: rate, rv: rv, total: tot, prior: pr, owed: Math.max(0, tot - pr) };
   });
   var caution = S.settings.cautionEnabled ? num(val('ci-caution')) : 0, prior = sum(items, function (i) { return i.prior; });
@@ -283,7 +294,7 @@ function ciCalc() {
       roomId: it.r.id, roomNo: it.r.number, roomTypeName: it.type.name,
       guestName: name, phone: val('ci-phone'), address: val('ci-addr'), guests: Math.max(1, num(val('ci-guests'))), vehicle: val('ci-car'), source: val('ci-source') || 'walkin',
       idType: val('ci-idtype'), idNumber: val('ci-idno'), idPhotos: S.form.idPhotos,
-      checkInDate: t, checkOutDate: addDays(t, n), nights: n, rate: it.rate,
+      checkInDate: t, checkOutDate: addDays(t, ns[i]), nights: ns[i], rate: it.rate,
       discount: i ? 0 : disc, discountReason: i ? '' : discR, discountStatus: !i && disc > 0 ? (isAdmin() ? 'approved' : 'pending') : 'none',
       total: it.total, paid: it.prior + paidNow, balance: it.total - it.prior - paidNow,
       caution: i ? 0 : cautionPaid, cautionAccount: i ? '' : (val('ci-cacct') || ''), cautionStatus: !i && cautionPaid ? 'held' : 'none',
@@ -299,7 +310,7 @@ function ciCalc() {
     b.update(db.collection('rooms').doc(it.r.id), { status: 'occupied', currentStayId: sref.id });
   });
   var nos = items.map(function (i) { return i.r.number; }).join(', ');
-  audit('check_in', 'stay', firstId, 'Room' + (items.length > 1 ? 's ' : ' ') + nos + ' · ' + name + ' · ' + n + ' nights · paid ' + money(amount) + (prior ? ' · deposit ' + money(prior) : ''), b);
+  audit('check_in', 'stay', firstId, 'Room' + (items.length > 1 ? 's ' : ' ') + nos + ' · ' + name + ' · ' + ns.join('/') + ' nights · paid ' + money(amount) + (prior ? ' · deposit ' + money(prior) : ''), b);
   b.commit().catch(fail);
   closeModal(); toast(name + ' checked in to Room' + (items.length > 1 ? 's ' : ' ') + nos);
 }/* ---------- Reservation ---------- */
@@ -311,12 +322,13 @@ function openReservation(roomId, date) {
     field('Guest name', input('rv-name', '', 'required')) +
     field('Phone number', input('rv-phone', '', 'required type="tel"')) +
     field('Arrival date', input('rv-date', date || todayStr(), 'type="date" required onchange="rvCalc()"')) +
-    field('Nights', input('rv-nights', 1, 'type="number" min="1" required oninput="rvCalc()"')) +
+    field('Nights', input('rv-nights', 1, 'type="number" min="1" required oninput="rvCalc()"'), '', 'With several rooms, each room can have its own number of nights below.') +
     field('Expected arrival time', input('rv-time', S.settings.checkInTime, 'type="time"')) +
     sourceField('rv-source', 'phone') +
     '<div class="field">Stay cost<span class="static" id="rv-cost"></span></div>' +
     '<div class="field span-all">Rooms<span class="hint">Tick every room this guest is booking. Rooms already taken for these dates cannot be ticked.</span><div class="room-picks">' +
     rooms.map(function (r) { return '<label class="check"><input type="checkbox" name="rv-room" value="' + r.id + '"' + (r.id === roomId || (!roomId && r === rooms[0]) ? ' checked' : '') + ' onchange="rvCalc()"><span><strong>' + esc(r.number) + '</strong> ' + esc(roomType(r).name) + '<span class="muted">' + money(Number(roomType(r).rate) || 0) + ' <span id="rvt-' + r.id + '"></span></span></span></label>'; }).join('') + '</div></div>' +
+    '<div class="span-all" id="rv-per"></div>' +
     field('Note', '<textarea id="rv-note"></textarea>', 'full') +
     '</div><fieldset class="group"><legend>Deposit (optional)</legend>' + payChoices('rv-method') + '</div><div class="fields">' +
     field('Deposit received (₦)', input('rv-dep', '', 'inputmode="numeric"'), '', 'Leave empty if the guest will pay on arrival. With several rooms it is shared across them by price.') +
@@ -327,25 +339,53 @@ function openReservation(roomId, date) {
   openModal('New reservation', b); rvCalc();
 }
 function rvPicks() { return Array.prototype.slice.call(document.querySelectorAll('input[name="rv-room"]:checked')).map(function (i) { return byId(S.data.rooms, i.value); }).filter(Boolean); }
+// Nights for one ticked room: its own box when several rooms are ticked, otherwise the main Nights
+function rvNights(r) {
+  var i = $('rv-n-' + r.id), n = Math.max(1, num(val('rv-nights')));
+  return i && rvPicks().length > 1 ? Math.max(1, num(i.value) || n) : n;
+}
 function rvCalc() {
   var box = $('rv-cost'); if (!box) return;
-  var from = val('rv-date'), n = Math.max(1, num(val('rv-nights'))), to = from ? addDays(from, n) : '', tot = 0, cnt = 0;
+  var from = val('rv-date'), n = Math.max(1, num(val('rv-nights'))), tot = 0, cnt = 0;
+  // A room is closed only when it is taken on the first night; a room free for fewer nights can still be ticked
   document.querySelectorAll('input[name="rv-room"]').forEach(function (i) {
-    var r = byId(S.data.rooms, i.value), c = from ? overlaps(r.id, from, to) : null, tag = $('rvt-' + r.id);
+    var r = byId(S.data.rooms, i.value), c = from ? overlaps(r.id, from, addDays(from, 1)) : null, tag = $('rvt-' + r.id);
+    var later = !c && from ? overlaps(r.id, from, addDays(from, n)) : null;
     i.disabled = !!c; if (c) i.checked = false;
-    if (tag) tag.textContent = c ? '· taken by ' + c.guestName : '';
-    if (i.checked) { tot += (Number(roomType(r).rate) || 0) * n; cnt++; }
+    if (tag) tag.textContent = c ? '· taken by ' + c.guestName : later ? '· booked from ' + fmtDate(later.checkInDate) : '';
   });
-  box.textContent = cnt ? money(tot) + ' · ' + cnt + ' room' + (cnt > 1 ? 's' : '') + ' × ' + n + ' night' + (n > 1 ? 's' : '') : 'Tick a room';
+  var picks = rvPicks(), per = $('rv-per'), sig = picks.map(function (r) { return r.id; }).join(',');
+  // One nights box per ticked room, keeping what was typed; untouched boxes follow the main Nights
+  if (per && per.dataset.sig !== sig) {
+    var keep = {}; per.querySelectorAll('input').forEach(function (i) { if (i.dataset.touched) keep[i.id] = i.value; });
+    per.innerHTML = picks.length > 1 ? '<fieldset class="group"><legend>Nights per room</legend><div class="fields">' + picks.map(function (r) {
+      var id = 'rv-n-' + r.id;
+      return '<label class="field">Room ' + esc(r.number) + input(id, keep[id] || n, 'type="number" min="1" required oninput="this.dataset.touched=1;rvCalc()"' + (keep[id] ? ' data-touched="1"' : '')) + '<span class="hint" id="rv-out-' + r.id + '"></span></label>';
+    }).join('') + '</div></fieldset>' : '';
+    per.dataset.sig = sig;
+  }
+  var nights = [], warn = '';
+  picks.forEach(function (r) {
+    var i = $('rv-n-' + r.id); if (i && !i.dataset.touched) i.value = n;
+    var rn = rvNights(r), out = from ? addDays(from, rn) : '', c = from ? overlaps(r.id, from, out) : null, o = $('rv-out-' + r.id);
+    if (o) o.textContent = out ? 'Leaves ' + fmtDate(out) : '';
+    if (c) warn += '<div class="note bad">Room ' + esc(r.number) + ' is booked for ' + esc(c.guestName) + ' from ' + fmtDate(c.checkInDate) + '. It is free for ' + daysBetween(from, c.checkInDate) + ' night' + (daysBetween(from, c.checkInDate) > 1 ? 's' : '') + ' at most.</div>';
+    tot += (Number(roomType(r).rate) || 0) * rn; cnt++; nights.push(rn);
+  });
+  var same = nights.every(function (x) { return x === nights[0]; });
+  box.textContent = cnt ? money(tot) + ' · ' + cnt + ' room' + (cnt > 1 ? 's' : '') + (same ? ' × ' + nights[0] + ' night' + (nights[0] > 1 ? 's' : '') : ' · ' + nights.join(' + ') + ' nights') : 'Tick a room';
+  var wb = $('rv-warn'); if (!wb && per) { wb = document.createElement('div'); wb.id = 'rv-warn'; per.after(wb); }
+  if (wb) wb.innerHTML = warn;
 }function overlaps(roomId, from, to, ignoreId) {
   return S.data.stays.find(function (s) { return s.id !== ignoreId && s.roomId === roomId && (s.status === 'reserved' || s.status === 'checked_in') && s.checkInDate < to && from < s.checkOutDate; });
 }
 async function saveReservation() {
-  var picks = rvPicks(), from = val('rv-date'), n = Math.max(1, num(val('rv-nights'))), to = addDays(from, n);
+  var picks = rvPicks(), from = val('rv-date');
   if (!picks.length) return toast('Tick at least one room', true);
   if (from < todayStr()) return toast('Arrival date is in the past', true);
+  var ns = picks.map(rvNights);
   for (var k = 0; k < picks.length; k++) {
-    var clash = overlaps(picks[k].id, from, to);
+    var clash = overlaps(picks[k].id, from, addDays(from, ns[k]));
     if (clash) return toast('Room ' + picks[k].number + ' is taken by ' + clash.guestName + ' (' + fmtDate(clash.checkInDate) + ' → ' + fmtDate(clash.checkOutDate) + ')', true);
   }
   var dep = num(val('rv-dep')), pref = val('rv-ref'), method = radio('rv-method');
@@ -353,17 +393,17 @@ async function saveReservation() {
   if (dep > 0 && !(await refOk(pref))) return;
   // Several rooms: one stay per room, linked by groupId. The deposit is shared across them by price.
   var b = db.batch(), name = val('rv-name'), now = Date.now(), groupId = picks.length > 1 ? db.collection('stays').doc().id : '';
-  var costs = picks.map(function (r) { return (Number(roomType(r).rate) || 0) * n; }), tc = sum(costs, function (c) { return c; }), left = dep, firstId = '';
+  var costs = picks.map(function (r, i) { return (Number(roomType(r).rate) || 0) * ns[i]; }), tc = sum(costs, function (c) { return c; }), left = dep, firstId = '';
   picks.forEach(function (r, i) {
     var share = i === picks.length - 1 ? left : Math.round(tc ? dep * costs[i] / tc : dep / picks.length); left -= share;
     var ref = db.collection('stays').doc(); if (!i) firstId = ref.id;
-    var stay = { roomId: r.id, roomNo: r.number, roomTypeName: roomType(r).name, guestName: name, phone: val('rv-phone'), source: val('rv-source') || 'phone', checkInDate: from, checkOutDate: to, nights: n, arrivalTime: val('rv-time'), notes: val('rv-note'), deposit: share, paid: share, status: 'reserved', createdAt: now };
+    var stay = { roomId: r.id, roomNo: r.number, roomTypeName: roomType(r).name, guestName: name, phone: val('rv-phone'), source: val('rv-source') || 'phone', checkInDate: from, checkOutDate: addDays(from, ns[i]), nights: ns[i], arrivalTime: val('rv-time'), notes: val('rv-note'), deposit: share, paid: share, status: 'reserved', createdAt: now };
     if (groupId) Object.assign(stay, { groupId: groupId, groupName: name });
     b.set(ref, Object.assign(stay, stamp()));
     if (share > 0) b.set(db.collection('payments').doc(), Object.assign({ stayId: ref.id, roomNo: r.number, guestName: name, amount: share, kind: 'deposit', method: method, sender: '', ref: pref, photos: S.form.payPhotos || [], status: payStatus(), groupId: groupId }, stamp()));
   });
   var nos = picks.map(function (r) { return r.number; }).join(', ');
-  audit('reservation', 'stay', firstId, 'Room' + (picks.length > 1 ? 's ' : ' ') + nos + ' · ' + name + ' · ' + from + (dep ? ' · deposit ' + money(dep) : ''), b);
+  audit('reservation', 'stay', firstId, 'Room' + (picks.length > 1 ? 's ' : ' ') + nos + ' · ' + name + ' · ' + from + ' · ' + ns.join('/') + ' nights' + (dep ? ' · deposit ' + money(dep) : ''), b);
   b.commit().catch(fail);
   closeModal(); toast((picks.length > 1 ? picks.length + ' rooms reserved' : 'Reservation saved') + (dep ? ' with ' + money(dep) + ' deposit' : ''));
 }

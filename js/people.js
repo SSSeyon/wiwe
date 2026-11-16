@@ -333,6 +333,7 @@ var MANUAL = [
     'Take an ID number or a photo of the ID when the owner has made it required.'] },
   { id: 'reserve', t: 'Reservations', who: ['manager', 'frontdesk'], p: [
     'New reservation holds a room for future dates, with or without a deposit.',
+    'Booking several rooms for one guest: tick each room. A Nights per room box appears, so one room can be booked for 3 nights and another for 1. The deposit is shared across the rooms by what each costs.',
     'If the guest has not arrived some hours after the expected time, the app flags a possible no-show: check them in or release the room.'] },
   { id: 'stay', t: 'During the stay and check-out', who: ['manager', 'frontdesk'], p: [
     'Open the stay from the room board or Stays to take more payments, extend, move to another room or send a receipt by WhatsApp.',
