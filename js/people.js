@@ -296,25 +296,52 @@ function bellItems() {
     out.push({ lvl: 'grey', tag: 'REPAIR', t: j.title, s: (j.location || '') + ' · ' + (j.assignee === me ? 'assigned to you' : 'not assigned'), go: "openJob('" + j.id + "')" });
   });
   var seen = {};
-  return out.filter(function (a) { var k = a.tag + '|' + a.t; if (seen[k]) return false; seen[k] = 1; return true; });
+  return out.filter(function (a) { var k = a.tag + '|' + a.t; if (seen[k]) return false; seen[k] = 1; a.key = k; return true; });
 }
+// Items the person has tapped leave the bell. Kept on this phone, per account. An item that goes away
+// and later comes back (a new overstay, a new task for the same room) shows again.
+function bellSeenKey() { return 'wiwe-bell-seen-' + (S.user ? S.user.uid : ''); }
+function bellSeen() { try { return JSON.parse(localStorage.getItem(bellSeenKey()) || '{}') || {}; } catch (e) { return {}; } }
+function bellSaveSeen(m) { try { localStorage.setItem(bellSeenKey(), JSON.stringify(m)); } catch (e) { } }
+function bellMarkSeen(k) { var m = bellSeen(); m[k] = Date.now(); bellSaveSeen(m); paintBell(); }
+function bellPending() {
+  var all = bellItems(), m = bellSeen(), now = {}, changed = false;
+  all.forEach(function (a) { now[a.key] = 1; });
+  // forget what is no longer waiting, so it shows again if it comes back
+  Object.keys(m).forEach(function (k) { if (!now[k]) { delete m[k]; changed = true; } });
+  if (changed && all.length) bellSaveSeen(m);
+  return { list: all.filter(function (a) { return !m[a.key]; }), cleared: all.filter(function (a) { return m[a.key]; }).length };
+}
+function bellShowAll() { bellSaveSeen({}); paintBell(); openBell(); }
 function paintBell() {
   var b = $('bellBtn'); if (!b || !S.me) return;
-  var n = bellItems().length;
+  var n = bellPending().list.length;
   b.innerHTML = icon('bell', 20) + (n ? '<span class="bell-n">' + (n > 99 ? '99+' : n) + '</span>' : '');
   b.setAttribute('aria-label', n ? n + ' thing' + (n === 1 ? '' : 's') + ' waiting for you' : 'Nothing waiting for you');
   b.title = b.getAttribute('aria-label');
 }
 function openBell() {
-  var list = bellItems();
-  openModal('Waiting for you', (list.length ? '<div class="muted mb-2">' + list.length + ' thing' + (list.length === 1 ? '' : 's') + ' for you to do or check. Tap one to open it.</div>' : '') + '<div class="bell-list" onclick="if(event.target.closest(\'.alert-item\'))closeModal()">' + alertList(list) + '</div>');
+  var p = bellPending(), list = p.list;
+  openModal('Waiting for you', (list.length ? '<div class="muted mb-2">' + list.length + ' thing' + (list.length === 1 ? '' : 's') + ' for you to do or check. Tap one to open it; it then leaves this list.</div>' : '') +
+    '<div class="bell-list">' + alertList(list) + '</div>' +
+    (p.cleared ? '<div class="row between mt-2"><span class="muted small">' + p.cleared + ' opened item' + (p.cleared === 1 ? '' : 's') + ' hidden</span><button type="button" class="btn small" onclick="bellShowAll()">Show again</button></div>' : ''));
+  // tag each row with its item so a tap knows which one to clear
+  var rows = document.querySelectorAll('.bell-list .alert-item');
+  list.forEach(function (a, i) { if (rows[i]) rows[i].dataset.k = a.key; });
+  // Runs before the item's own action (capture), so the bell closes first and does not shut a window the item opens
+  var box = document.querySelector('.bell-list');
+  if (box) box.addEventListener('click', function (ev) {
+    var el = ev.target.closest('.alert-item'); if (!el) return;
+    if (el.dataset.k) bellMarkSeen(el.dataset.k);
+    closeModal();
+  }, true);
 }
 
 /* ---------- Manual: only the parts this account can use ---------- */
 var MANUAL = [
   { id: 'start', t: 'Getting around', who: 'all', p: [
     'Home shows the parts of the app you can use. On a phone, the bar at the bottom has Home, your main page, the Do button for quick actions, and Me.',
-    'The bell at the top shows what is waiting for you: tasks assigned to you and things that need your attention. Tap an item to open it.',
+    'The bell at the top shows what is waiting for you: tasks assigned to you and things that need your attention. Tap an item to open it; it then leaves the list on that phone. Show again at the bottom brings opened items back.',
     'Summary cards at the top of a page (the boxes with a number) open a list of what makes up that number.',
     'The app works without signal. Anything you record is saved on the phone and sent when the connection is back; the badge at the top says Synced when everything has gone through.'] },
   { id: 'me', t: 'Your account', who: 'all', p: [

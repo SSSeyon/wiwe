@@ -454,3 +454,10 @@ This reverses the "No owner confirmation" part of section 22.
 - **Check-in:** each extra room has its own "Nights in Room …" box in the Stay part. A room coming from a group reservation starts at its booked nights; a room added at the desk follows the main Nights until changed.
 - Receipts, the group box and the stays list already worked per room, so they show the different dates without changes.
 - Tested in the local mock: a 3-room booking at 2/1/2 nights with the deposit split 20,000/10,000/20,000, check-in of the group with an extra walk-in room, the receipt, and the "free for 2 nights at most" warning.
+
+## 31. v3.7.1: tapped bell items leave the list
+
+- The bell's items are worked out from live data (tasks, stays, alerts), so there is nothing to "mark read" in the database. Instead, tapping an item saves its key (`tag|title`) in localStorage under `wiwe-bell-seen-<uid>`, and the bell hides it and the count drops. This is per phone and per account.
+- A saved key is dropped once that item is no longer waiting, so if the same thing comes back later (a new overstay, a new task for the same room) it shows again.
+- "Show again" at the bottom of the bell list brings back everything that was hidden.
+- Fixed: tapping a bell item that opens a window (an arriving guest, a repair job) used to close that window straight away, because the bell closed itself after the item's own action. The bell now closes first.
