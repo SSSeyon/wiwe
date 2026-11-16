@@ -1,4 +1,4 @@
-const APP_VERSION = '3.5.0';
+const APP_VERSION = '3.5.1';
 
 /* =========================================================
    Constants
@@ -163,6 +163,16 @@ function toast(msg, bad, action) {
   clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.className = 'toast'; toastAct = null; }, action ? 7000 : 3200);
 }
 function toastAction() { var a = toastAct; toastAct = null; $('toast').className = 'toast'; if (a && a.fn) a.fn(); }function fail(e) { console.error(e); var m = (e && e.message) || String(e); if (m.indexOf('permission') >= 0 || m.indexOf('PERMISSION') >= 0) { if (typeof isAdmin === 'function' && isAdmin()) { if (typeof checkRules === 'function') checkRules().then(function () { if (S.rulesOutdated) openRulesHelp(); }); m = 'Refused by the database security rules. Checking whether they need updating…'; } else m = 'You do not have permission to do that.'; } toast(m, true); }
+// Runs many separate writes, a few at a time, and reports how many failed. A batch is checked by
+// the security rules as ONE request, and Firestore allows only 20 rule look-ups per request, so a
+// batch of more than a handful of owner-only writes is refused as a whole.
+async function writeEach(jobs, at) {
+  var res = { ok: 0, bad: [] }, next = 0, n = Math.min(at || 6, jobs.length), lanes = [];
+  async function lane() { while (next < jobs.length) { var j = jobs[next++]; try { await j(); res.ok++; } catch (e) { console.error(e); res.bad.push(e); } } }
+  for (var i = 0; i < n; i++) lanes.push(lane());
+  await Promise.all(lanes);
+  return res;
+}
 /* Pop-up. On phones it is a bottom sheet. Focus stays inside while it is open and goes back to
    the button that opened it when it closes. */
 var modalReturn = null;

@@ -420,3 +420,12 @@ This reverses the "No owner confirmation" part of section 22.
   - writes `test_records_deleted` to the activity log, which cannot itself be deleted.
 - **Security rules:** the owner (admin) may now delete stays, payments, moves, expenses, jobs, incidents, laundry and shifts. Staff still cannot delete any of them. The rules publish job runs when `firestore.rules` changes on main; until the new rules are live, deleting is refused.
 - Tested in the local mock only: all 34 cards on 9 pages, and a clean-up of a test stay with a payment on a real stay, a sale, opening stock, an expense, an old linked task and an ID photo.
+
+## 28. v3.5.1: owner-only writes are sent one at a time
+
+- **The fault:** Remove test records was refused by the security rules on the live site. Firestore checks a batched write as one request and allows only 20 rule look-ups (`get`/`exists`) per request. Every owner-only write looks up the user's own record through `admin()`, so a batch of more than a handful of them is refused as a whole. The local mock does not run the rules, so testing missed it.
+- **The fix:** `writeEach(jobs)` in core.js sends each write as its own request, six at a time, and returns `{ ok, bad }`.
+  - Remove test records deletes each record on its own. Its follow-ups (stock back, a kept stay's balance, freeing the room, its photos) run only after that record is gone, so running the clean-up again never puts anything back twice. If some fail, the message says how many and why, and Find records shows what is left.
+  - Confirm all on the payments page uses it too (it was a batch of up to 200 owner-only updates).
+- **Rule of thumb:** keep batches to a few writes. Anything that loops over many owner-only documents should use `writeEach`.
+- Tested in the local mock with batches over 6 writes made to fail: a 12-record clean-up and Confirm all of 9 payments both went through.

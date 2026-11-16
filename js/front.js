@@ -681,13 +681,11 @@ async function confirmAllPayments() {
   var list = unconfirmedPayments(); if (!list.length) return;
   var tot = sum(list, function (p) { return p.amount; }), pos = sum(list.filter(function (p) { return p.method === 'pos'; }), function (p) { return p.amount; });
   if (!(await ask({ title: 'Confirm all ' + list.length + ' payments?', text: 'Total ' + money(tot) + ' (' + money(pos) + ' by POS, ' + money(tot - pos) + ' by transfer).\nOnly do this when the POS settlement and bank statement show every one of them.', ok: 'Confirm all ' + list.length, cancel: 'Check one by one' }))) return;
-  for (var i = 0; i < list.length; i += 200) {
-    var b = db.batch(), now = Date.now();
-    list.slice(i, i + 200).forEach(function (p) { b.update(db.collection('payments').doc(p.id), { status: 'confirmed', decidedBy: S.user.uid, decidedByName: meName(), decidedAt: now }); });
-    if (i === 0) audit('payments_confirmed', 'payment', '', list.length + ' payments · ' + money(tot), b);
-    b.commit().catch(fail);
-  }
-  toast(list.length + ' payments confirmed');
+  var now = Date.now(), upd = { status: 'confirmed', decidedBy: S.user.uid, decidedByName: meName(), decidedAt: now };
+  toast('Confirming ' + list.length + ' payments…');
+  var res = await writeEach(list.map(function (p) { return function () { return db.collection('payments').doc(p.id).update(upd); }; }));
+  audit('payments_confirmed', 'payment', '', res.ok + ' payments · ' + money(tot) + (res.bad.length ? ' · ' + res.bad.length + ' failed' : ''));
+  if (res.bad.length) fail(res.bad[0]); else toast(list.length + ' payments confirmed');
 }
 // Money in that never arrived: take it off the guest's account (like a void) and open an incident
 async function rejectPayment(id) {

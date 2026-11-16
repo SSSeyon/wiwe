@@ -682,17 +682,8 @@ async function deleteTestRecords() {
     var parts = CLEAN_COLS.filter(function (c) { return sel[c[0]].length; }).map(function (c) { return sel[c[0]].length + ' ' + c[1].toLowerCase(); });
     var typed = await askText({ title: 'Delete ' + count + ' record' + (count === 1 ? '' : 's') + ' for good?', text: parts.join('\n') + (linked ? '\n(' + linked + ' of these are linked to the ticked stays.)' : '') + '\n\nThis cannot be undone. Type DELETE to go ahead.', label: 'Type DELETE', ok: 'Delete for good', danger: true });
     if (!typed || typed.trim().toUpperCase() !== 'DELETE') { CLEAN.busy = false; render(); if (typed) toast('Nothing deleted: the word did not match', true); return; }
-    var ops = [], qty = {}, stays = {};
-    Object.keys(sel).forEach(function (col) {
-      sel[col].forEach(function (r) {
-        ops.push(function (b) { b.delete(db.collection(col).doc(r.id)); });
-        cleanPhotoIds(r).forEach(function (pid) { ops.push(function (b) { b.delete(db.collection('photos').doc(pid)); }); });
-        // Stock goes back to what it was before this movement
-        if (col === 'moves' && r.itemId && byId(S.data.items, r.itemId) && r.qty) qty[r.itemId] = (qty[r.itemId] || 0) - r.qty;
-      });
-    });
-    Object.keys(qty).forEach(function (id) { if (qty[id]) ops.push(function (b) { b.update(db.collection('items').doc(id), { qty: FV.increment(qty[id]) }); }); });
     // A payment taken off a stay that is kept: the guest owes it again (as when a payment is voided)
+    var stayFix = {}, stays = {};
     for (var p = 0; p < sel.payments.length; p++) {
       var x = sel.payments[p], a = x.amount;
       if (!x.stayId || stayIds[x.stayId] || !(a > 0) || x.status === 'void' || x.status === 'rejected') continue;
@@ -700,22 +691,36 @@ async function deleteTestRecords() {
       var s = stays[x.stayId] || findStay(x.stayId);
       if (!s) { var d = await db.collection('stays').doc(x.stayId).get(); if (!d.exists) continue; s = Object.assign({ id: d.id }, d.data()); }
       stays[x.stayId] = s;
-      (function (x, s, a) {
-        if (x.kind === 'caution') ops.push(function (b) { b.update(db.collection('stays').doc(s.id), { caution: FV.increment(-a) }); });
-        else ops.push(function (b) { b.update(db.collection('stays').doc(s.id), s.status === 'reserved' ? { paid: FV.increment(-a), deposit: FV.increment(-a) } : { paid: FV.increment(-a), balance: FV.increment(a) }); });
-      })(x, s, a);
+      stayFix[x.id] = x.kind === 'caution' ? { caution: FV.increment(-a) }
+        : s.status === 'reserved' ? { paid: FV.increment(-a), deposit: FV.increment(-a) } : { paid: FV.increment(-a), balance: FV.increment(a) };
     }
-    // Rooms that held a deleted stay are free again
-    var freed = S.data.rooms.filter(function (r) { return r.currentStayId && stayIds[r.currentStayId]; });
-    freed.forEach(function (r) { ops.push(function (b) { b.update(db.collection('rooms').doc(r.id), { status: 'ready', currentStayId: null }); }); });
-    var note = parts.join(', ') + ' · recorded ' + CLEAN.from + ' to ' + CLEAN.to;
-    for (var k = 0; k < ops.length; k += 400) {
-      var b = db.batch(); ops.slice(k, k + 400).forEach(function (fn) { fn(b); });
-      if (k === 0) audit('test_records_deleted', 'all', '', note, b);
-      await b.commit();
-    }
+    // Rooms that hold a ticked stay are freed once that stay is gone
+    var rooms = {}; S.data.rooms.forEach(function (r) { if (r.currentStayId && stayIds[r.currentStayId]) rooms[r.currentStayId] = r; });
+    // Each record is its own write (see writeEach). What it put back (stock, a balance, a room)
+    // is undone only after the record itself is gone, so running the clean-up again never undoes twice.
+    var gone = {}, jobs = [];
+    Object.keys(sel).forEach(function (col) {
+      sel[col].forEach(function (r) {
+        jobs.push(async function () {
+          await db.collection(col).doc(r.id).delete();
+          gone[col + '/' + r.id] = 1;
+          var pids = cleanPhotoIds(r);
+          for (var i = 0; i < pids.length; i++) await db.collection('photos').doc(pids[i]).delete().catch(function () {});
+          if (col === 'moves' && r.itemId && r.qty && byId(S.data.items, r.itemId)) await db.collection('items').doc(r.itemId).update({ qty: FV.increment(-r.qty) });
+          if (col === 'payments' && stayFix[r.id]) await db.collection('stays').doc(r.stayId).update(stayFix[r.id]);
+          if (col === 'stays' && rooms[r.id]) await db.collection('rooms').doc(rooms[r.id].id).update({ status: 'ready', currentStayId: null });
+        });
+      });
+    });
+    var res = await writeEach(jobs), done = Object.keys(gone).length;
+    var freed = Object.keys(rooms).filter(function (id) { return gone['stays/' + id]; }).map(function (id) { return rooms[id]; });
+    audit('test_records_deleted', 'all', '', parts.join(', ') + ' · recorded ' + CLEAN.from + ' to ' + CLEAN.to + (res.bad.length ? ' · ' + done + ' deleted, ' + res.bad.length + ' failed' : ''));
     CLEAN.found = null; CLEAN.skip = {};
-    toast(count + ' test record' + (count === 1 ? '' : 's') + ' deleted' + (freed.length ? '. Room' + (freed.length === 1 ? ' ' : 's ') + freed.map(function (r) { return r.number; }).join(', ') + (freed.length === 1 ? ' is' : ' are') + ' Ready again.' : ''));
+    var roomsMsg = freed.length ? '. Room' + (freed.length === 1 ? ' ' : 's ') + freed.map(function (r) { return r.number; }).join(', ') + (freed.length === 1 ? ' is' : ' are') + ' Ready again' : '';
+    if (res.bad.length) {
+      var why = /permission/i.test((res.bad[0] && (res.bad[0].code || res.bad[0].message)) || '') ? 'refused by the security rules' : ((res.bad[0] && res.bad[0].message) || 'an error');
+      toast(done + ' deleted' + roomsMsg + '. ' + res.bad.length + ' step' + (res.bad.length === 1 ? '' : 's') + ' failed (' + why + '). Tap Find records again to see what is left.', true);
+    } else toast(count + ' test record' + (count === 1 ? '' : 's') + ' deleted' + roomsMsg + '.');
   } catch (e) { fail(e); }
   CLEAN.busy = false; render();
 }
