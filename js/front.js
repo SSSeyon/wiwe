@@ -20,9 +20,12 @@ VIEWS.board = {
     var owe = debtors();
     var al = alerts();
     var html = '<section class="grid-stats board-stats" aria-label="Today at a glance">' +
-      stat('Occupied', occ + ' / ' + rooms.length, ready + ' ready · ' + ((counts.dirty || 0) + (counts.cleaning || 0) + (counts.inspect || 0)) + ' to clean') +
-      stat('Today', arrivals.length + ' in · ' + departures.length + ' out', (arrivals.length ? 'Arriving ' + arrivals.map(function (s) { return s.roomNo; }).join(', ') : 'No arrivals') + (departures.length ? ' · Leaving ' + departures.map(function (s) { return s.roomNo; }).join(', ') : '')) +
-      stat('Guests owing', money(sum(owe, function (s) { return s.balance; })), owe.length ? owe.length + ' stay' + (owe.length > 1 ? 's' : '') + ' with a balance' : 'Everyone is paid up', owe.length ? 'warn' : '') +
+      stat('Occupied', occ + ' / ' + rooms.length, ready + ' ready · ' + ((counts.dirty || 0) + (counts.cleaning || 0) + (counts.inspect || 0)) + ' to clean', '', function () { return bdRoomsByStatus(rooms); }) +
+      stat('Today', arrivals.length + ' in · ' + departures.length + ' out', (arrivals.length ? 'Arriving ' + arrivals.map(function (s) { return s.roomNo; }).join(', ') : 'No arrivals') + (departures.length ? ' · Leaving ' + departures.map(function (s) { return s.roomNo; }).join(', ') : ''), '', function () {
+        return bdGroup('Arriving (' + arrivals.length + ')', arrivals, function (s) { return bdStay(s, s.arrivalTime ? 'Arriving about ' + s.arrivalTime : ''); }, 'No arrivals today.') +
+          bdGroup('Leaving (' + departures.length + ')', departures, function (s) { return bdStay(s); }, 'Nobody is due out today.');
+      }) +
+      stat('Guests owing', money(sum(owe, function (s) { return s.balance; })), owe.length ? owe.length + ' stay' + (owe.length > 1 ? 's' : '') + ' with a balance' : 'Everyone is paid up', owe.length ? 'warn' : '', function () { return bdOwing(owe); }) +
       '</section>';
     html += '<div class="split board-split"><section class="wide board-main" aria-label="Rooms">' +
       building3dHtml() + '</section>' +
@@ -31,7 +34,6 @@ VIEWS.board = {
     return html;
   }
 };
-function stat(label, value, sub, cls) { return '<div class="stat ' + (cls || '') + '"><span class="label">' + esc(label) + '</span><span class="value">' + esc(value) + '</span><span class="sub">' + esc(sub || '') + '</span></div>'; }
 function movesList(arr, dep) {
   var rows = dep.map(function (s) { return { n: s.guestName, r: s.roomNo, t: 'by ' + S.settings.checkOutTime, k: 'Departing', c: 'st-dirty', id: s.id }; })
     .concat(arr.map(function (s) { return { n: s.guestName, r: s.roomNo, t: s.arrivalTime || '', k: 'Arriving', c: 'st-reserved', id: s.id }; }))
@@ -723,10 +725,13 @@ VIEWS.payments = {
     var list = tab === 'confirm' ? sortBy(up, function (p) { return p.at; }) : tab === 'refunds' ? all.filter(function (p) { return p.amount < 0; }) : tab === 'void' ? all.filter(function (p) { return p.status === 'void' || p.status === 'rejected'; }) : tab === 'dups' ? dups : all.filter(function (p) { return p.status !== 'void'; });
     if (q) list = list.filter(function (p) { return normRef(p.ref + ' ' + p.guestName + ' ' + p.roomNo).indexOf(q) >= 0; });
     var html = '<section class="grid-stats">' +
-      stat('Recorded today', money(sum(todays, function (p) { return p.amount; })), todays.length + ' payment' + (todays.length === 1 ? '' : 's')) +
-      stat('By POS today', money(by('pos')), money(by('transfer')) + ' by bank transfer') +
-      stat('Waiting for owner', up.length, up.length ? money(sum(up, function (p) { return p.amount; })) + ' to confirm' : 'All confirmed', up.length ? 'warn' : '') +
-      stat('Refunds to approve', wait.length, wait.length ? money(-sum(wait, function (p) { return p.amount; })) : 'None waiting', wait.length ? 'warn' : '') +
+      stat('Recorded today', money(sum(todays, function (p) { return p.amount; })), todays.length + ' payment' + (todays.length === 1 ? '' : 's'), '', function () { return bdPays(todays); }) +
+      stat('By POS today', money(by('pos')), money(by('transfer')) + ' by bank transfer', '', function () {
+        var pos = todays.filter(function (p) { return p.method === 'pos'; }), tr = todays.filter(function (p) { return p.method === 'transfer'; });
+        return bdGroup('POS · ' + money(by('pos')), sortBy(pos, function (p) { return p.at; }, true), bdPay, 'No POS payments today.') + bdGroup('Bank transfer · ' + money(by('transfer')), sortBy(tr, function (p) { return p.at; }, true), bdPay, 'No transfers today.');
+      }) +
+      stat('Waiting for owner', up.length, up.length ? money(sum(up, function (p) { return p.amount; })) + ' to confirm' : 'All confirmed', up.length ? 'warn' : '', function () { return bdPays(up, up.length + ' payment' + (up.length === 1 ? '' : 's') + ' to match against the POS settlement or bank') + (up.length ? bdGo('Go to To confirm', "go('payments',{tab:'confirm'})") : ''); }) +
+      stat('Refunds to approve', wait.length, wait.length ? money(-sum(wait, function (p) { return p.amount; })) : 'None waiting', wait.length ? 'warn' : '', function () { return bdPays(wait, wait.length + ' refund' + (wait.length === 1 ? '' : 's') + ' waiting for the owner') + (wait.length ? bdGo('Go to Refunds', "go('payments',{tab:'refunds'})") : ''); }) +
       '</section>' +
       tabs('payments', [['confirm', 'To confirm' + (up.length ? ' (' + up.length + ')' : '')], ['all', 'All'], ['refunds', 'Refunds' + (wait.length ? ' (' + wait.length + ' to approve)' : '')], ['dups', 'Same reference (' + dups.length + ')'], ['void', 'Void']]) +
       '<div class="row"><input class="search" id="pay-q" type="search" placeholder="Search reference, guest or room" value="' + esc(S.params.pq || '') + '" oninput="S.params.pq=this.value;render()"></div>' +

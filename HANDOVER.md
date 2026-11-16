@@ -406,3 +406,17 @@ This reverses the "No owner confirmation" part of section 22.
 - **Stored in** `settings/general.receipt` (only the owner can write settings, so no rule change). An uploaded logo is shrunk to 480 px and kept as a data URL in that document (about 270 KB at most).
 - **Recolouring a logo** turns dark parts into the chosen colour and light parts see-through. That suits one-colour logos like Wiwe's; a full-colour logo should be used without it. On the Colour header layout a dark colour always turns the logo white.
 - Tested in the local mock only (Chrome): picture, PDF (opens in Chrome's PDF viewer), group receipts, the share call, the laptop fallback, a custom logo, and the designer on phone and laptop widths. Not yet tried on a real phone's share menu.
+
+## 27. v3.5.0: summary cards open their breakdown, and removing test records
+
+- **Summary cards are buttons now.** Every figure card at the top of a page (Room board, Today, Reports, Payments, Housekeeping, Laundry, Maintenance, Store, Expenses) opens a pop-up showing what makes up the figure: the payments behind a total, the guests behind "Guests owing", rooms by status, expenses by category, the income and expense lines behind Net, nights per room behind Occupancy, and so on. Rows open the stay, task, job or expense they came from.
+- **How it works:** `stat(label, value, sub, cls, detail)` in js/core.js (moved from front.js). The fifth argument is a function returning the pop-up's HTML; it is kept in `STAT_D` for that drawing of the page and called by `openStat(i)` on tap or Enter. Building blocks: `bdHead`, `bdList`, `bdGroup`, `bdLine`, `bdGo`, and row helpers `bdPay`, `bdStay`, `bdRoom`, `bdTask`, `bdJob`, `bdExp`, `bdSale`, plus `bdRoomsByStatus`, `bdOwing`, `bdPays`. A card without a detail function looks and behaves as before.
+- **Admin settings → Data → Remove test records** (`adminCleanup()` in js/admin.js): pick the days, "Find records" lists stays, payments, stock movements and sales, expenses, tasks, jobs, incidents, laundry and shifts made in that period, each with a tick box (opening stock starts unticked). Deleting asks the owner to type DELETE. It also:
+  - removes payments, tasks and sales linked to a ticked stay, even from other days;
+  - deletes photos attached to the removed records;
+  - frees rooms that held a removed stay (status Ready);
+  - puts stock back by reversing each removed movement;
+  - puts a removed payment back on the balance of a stay that is kept (as a void does);
+  - writes `test_records_deleted` to the activity log, which cannot itself be deleted.
+- **Security rules:** the owner (admin) may now delete stays, payments, moves, expenses, jobs, incidents, laundry and shifts. Staff still cannot delete any of them. The rules publish job runs when `firestore.rules` changes on main; until the new rules are live, deleting is refused.
+- Tested in the local mock only: all 34 cards on 9 pages, and a clean-up of a test stay with a payment on a real stay, a sale, opening stock, an expense, an old linked task and an ID photo.

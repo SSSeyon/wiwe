@@ -1,4 +1,4 @@
-const APP_VERSION = '3.4.0';
+const APP_VERSION = '3.5.0';
 
 /* =========================================================
    Constants
@@ -321,6 +321,67 @@ function recRow(o) {
     (o.side ? '<span class="rec-side">' + o.side + '</span>' : '') + '</div>';
 }
 function dots(parts) { return parts.filter(function (x) { return x != null && x !== ''; }).map(esc).join(' · '); }
+/* Summary cards. Give one a detail function and it becomes a button that opens what makes up its figure.
+   The functions are kept per render (STAT_D is emptied each time the page is drawn). */
+var STAT_D = [];
+function stat(label, value, sub, cls, detail) {
+  var i = -1; if (detail) { i = STAT_D.length; STAT_D.push({ t: label, f: detail }); }
+  var open = i < 0 ? '' : ' role="button" tabindex="0" aria-label="' + esc(label) + ': ' + esc(String(value)) + '. Show what makes this up" onclick="openStat(' + i + ')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openStat(' + i + ')}"';
+  return '<div class="stat ' + (cls || '') + (i < 0 ? '' : ' stat-open') + '"' + open + '><span class="label">' + esc(label) + '</span><span class="value">' + esc(value) + '</span><span class="sub">' + esc(sub || '') + '</span></div>';
+}
+function openStat(i) { var d = STAT_D[i]; if (!d) return; try { openModal(d.t, d.f()); } catch (e) { fail(e); } }
+// Pieces for those pop-ups
+function bdHead(total, note) { return '<div class="bd-head"><strong>' + esc(total) + '</strong>' + (note ? '<span>' + esc(note) + '</span>' : '') + '</div>'; }
+function bdList(list, rowFn, empty) { return list.length ? '<div class="bd-list">' + list.map(rowFn).join('') + '</div>' : '<div class="muted">' + esc(empty || 'Nothing here.') + '</div>'; }
+function bdGroup(title, list, rowFn, empty) { return '<h3 class="sub-h bd-sub">' + esc(title) + '</h3>' + bdList(list, rowFn, empty); }
+function bdLine(label, value, strong) { return '<div class="list-row' + (strong ? ' bd-total-row' : '') + '"><span>' + esc(label) + '</span><strong class="money">' + esc(value) + '</strong></div>'; }
+function bdGo(label, js) { return '<div class="form-actions"><button class="btn" type="button" onclick="closeModal();' + js + '">' + esc(label) + '</button></div>'; }
+function bdPay(p) {
+  return recRow({
+    l1: '<span class="amt' + (p.amount < 0 ? ' neg' : '') + '">' + money(p.amount) + '</span>' + (p.guestName ? '<span class="who">' + esc(p.guestName) + '</span>' : ''),
+    l2: dots([PAY_KIND[p.kind] || p.kind, p.roomNo ? 'Room ' + p.roomNo : '', PAY_LABEL[p.method] || p.method, p.ref ? 'ref ' + p.ref : '']),
+    l3: dots([p.byName, fmtDT(p.at)]), side: typeof payPill === 'function' ? payPill(p) : '',
+    click: p.stayId ? "openStay('" + p.stayId + "')" : ''
+  });
+}
+function bdStay(s, extra) {
+  var ss = (typeof STAY_STATUS !== 'undefined' && STAY_STATUS[s.status]) || ['', ''];
+  return recRow({
+    l1: '<span class="who">' + esc(s.guestName || 'Guest') + '</span>',
+    l2: dots(['Room ' + s.roomNo, fmtDate(s.checkInDate) + ' → ' + fmtDate(s.checkOutDate), s.nights ? s.nights + ' night' + (s.nights === 1 ? '' : 's') : '']),
+    l3: extra ? esc(extra) : '',
+    side: (s.balance > 0 ? pill('Owes ' + money(s.balance), 'st-alert') : '') + (ss[0] ? pill(ss[0], ss[1]) : ''),
+    click: "openStay('" + s.id + "')"
+  });
+}
+function bdRoom(r) {
+  var st = ROOM_STATUS[displayStatus(r)] || ROOM_STATUS.ready, s = stayOf(r);
+  return recRow({ l1: '<strong>Room ' + esc(r.number) + '</strong>', l2: dots([roomType(r).name, s ? s.guestName : '', s ? 'until ' + fmtDate(s.checkOutDate) : '', r.status === 'ooo' ? r.oooReason : '']), side: pill(st.label, st.cls), click: "openRoom('" + r.id + "')" });
+}
+function bdTask(t) {
+  var ty = (typeof TASK_TYPE !== 'undefined' && TASK_TYPE[t.type]) || [t.type, ''], ts = (typeof TASK_STATUS !== 'undefined' && TASK_STATUS[t.status]) || ['', ''];
+  return recRow({ l1: '<strong>Room ' + esc(t.roomNo) + ' · ' + esc(t.title || ty[0]) + '</strong>', l2: dots([t.assigneeName, t.doneAt ? 'done ' + fmtTime(t.doneAt) : 'created ' + ago(t.createdAt)]), side: pill(ts[0], ts[1]), click: "go('task',{id:'" + t.id + "'})" });
+}
+function bdJob(j) { return recRow({ l1: '<strong>' + esc(j.title) + '</strong>', l2: dots([j.locationLabel || '', j.priority === 'urgent' ? 'Urgent' : '', j.cost ? money(j.cost) : '']), l3: dots(['Reported ' + ago(j.createdAt), j.byName]), side: typeof jobPill === 'function' ? jobPill(j) : '', click: "openJob('" + j.id + "')" }); }
+function bdExp(e) { return recRow({ l1: '<span class="amt">' + money(e.amount) + '</span><span class="who">' + esc(EXPENSE_CATS[e.category] || e.category) + '</span>', l2: dots([e.description, e.litres ? e.litres + ' L' : '']), l3: dots([e.byName, fmtDT(e.at)]), side: typeof expPill === 'function' ? expPill(e) : '', click: "openExpense('" + e.id + "')" }); }
+function bdSale(m) { return recRow({ l1: '<span class="amt">' + money(m.total) + '</span><span class="who">' + esc(-m.qty + ' × ' + m.itemName) + '</span>', l2: dots([m.guestName, m.roomNo ? 'Room ' + m.roomNo : '', m.onBill ? 'On the bill' : (PAY_LABEL[m.method] || m.method)]), l3: dots([m.byName, fmtDT(m.at)]) }); }
+// Used by several cards
+function bdRoomsByStatus(rooms) {
+  return ['occupied', 'reserved', 'ready', 'dirty', 'cleaning', 'inspect', 'ooo'].map(function (k) {
+    var l = rooms.filter(function (r) { return displayStatus(r) === k; });
+    return l.length ? bdGroup(ROOM_STATUS[k].label + ' (' + l.length + ')', l, bdRoom) : '';
+  }).join('');
+}
+function bdOwing(owe) {
+  owe = sortBy(owe, function (s) { return s.balance || 0; }, true);
+  return bdHead(money(sum(owe, function (s) { return s.balance; })), owe.length + ' stay' + (owe.length === 1 ? '' : 's') + ', largest first') +
+    bdList(owe, function (s) { return bdStay(s, s.status === 'checked_out' ? 'Left ' + fmtDate(s.checkedOutAt) : ''); }, 'Everyone is paid up.');
+}
+function bdPays(list, note) {
+  list = sortBy(list, function (p) { return p.at; }, true);
+  var pos = sum(list.filter(function (p) { return p.method === 'pos'; }), function (p) { return p.amount; }), tr = sum(list.filter(function (p) { return p.method === 'transfer'; }), function (p) { return p.amount; });
+  return bdHead(money(sum(list, function (p) { return p.amount; })), note || (list.length + ' payment' + (list.length === 1 ? '' : 's') + ' · ' + money(pos) + ' POS · ' + money(tr) + ' transfer')) + bdList(list, bdPay, 'No payments.');
+}
 /* Grey placeholders while something loads */
 function skeleton(lines, stats) { var h = ''; if (stats) { h += '<div class="skel-stats" aria-hidden="true">'; for (var s = 0; s < stats; s++) h += '<i></i>'; h += '</div>'; } h += '<div class="skel" role="status" aria-label="Loading">'; for (var i = 0; i < (lines || 4); i++) h += '<i></i>'; return h + '</div>'; }document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('modal').classList.contains('hidden')) closeModal(); });
 var THEMES = { colour: '#4F46E5', mono: '#FFFFFF', cream: '#F4E6B8' };
@@ -792,6 +853,7 @@ function render() {
   $('topActions').innerHTML = v.actions ? v.actions() : '';
   var y = window.scrollY;
   var active = document.activeElement && document.activeElement.id;
+  STAT_D = [];
   $('view').innerHTML = v.render();
   window.scrollTo(0, y);
   if (active && $(active) && $('view').contains($(active))) { var el = $(active); el.focus(); if (el.setSelectionRange && el.type === 'search') { var l = el.value.length; el.setSelectionRange(l, l); } }

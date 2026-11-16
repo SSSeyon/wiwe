@@ -11,15 +11,19 @@ VIEWS.today = {
       var p = allPayments().filter(function (x) { return dateStr(new Date(x.at)) === day && x.amount > 0 && payCounts(x); });
       var e = S.data.expenses.filter(function (x) { return dateStr(new Date(x.at)) === day && x.status !== 'rejected' && x.status !== 'void'; });
       var by = function (m) { return sum(p.filter(function (x) { return x.method === m; }), function (x) { return x.amount; }); };
-      return { list: p, exp: sum(p, function (x) { return x.amount; }), conf: sum(p.filter(function (x) { return x.status === 'confirmed'; }), function (x) { return x.amount; }), pos: by('pos'), transfer: by('transfer'), spent: sum(e, function (x) { return x.amount; }) };
+      return { list: p, exp: sum(p, function (x) { return x.amount; }), conf: sum(p.filter(function (x) { return x.status === 'confirmed'; }), function (x) { return x.amount; }), pos: by('pos'), transfer: by('transfer'), spent: sum(e, function (x) { return x.amount; }), exps: e };
+    }
+    function dayDetail(d) {
+      return bdPays(d.list, d.list.length + ' payment' + (d.list.length === 1 ? '' : 's') + ' · ' + money(d.conf) + ' confirmed · ' + money(d.pos) + ' POS · ' + money(d.transfer) + ' transfer') +
+        bdGroup('Spent (' + money(d.spent) + ')', sortBy(d.exps, function (x) { return x.at; }, true), bdExp, 'No expenses recorded.');
     }
     var td = money4(t), yd = money4(y), rooms = roomsSorted(), occ = rooms.filter(function (r) { return r.status === 'occupied'; }).length;
     var al = alerts(), owe = debtors();
     var html = '<section class="grid-stats">' +
-      '<div class="stat dark"><span class="label">Recorded today</span><span class="value">' + money(td.exp) + '</span><span class="sub">' + money(td.conf) + ' confirmed · ' + money(td.pos) + ' POS</span></div>' +
-      stat('Yesterday', money(yd.exp), money(yd.pos) + ' POS · ' + money(yd.spent) + ' spent') +
-      stat('Occupancy now', occ + ' / ' + rooms.length, Math.round(occ / Math.max(1, rooms.length) * 100) + '%') +
-      stat('Guests owing', money(sum(owe, function (s) { return s.balance; })), owe.length + ' stay' + (owe.length === 1 ? '' : 's') + ' · ' + money(td.spent) + ' spent today', owe.length ? 'warn' : '') + '</section>';
+      stat('Recorded today', money(td.exp), money(td.conf) + ' confirmed · ' + money(td.pos) + ' POS', 'dark', function () { return dayDetail(td); }) +
+      stat('Yesterday', money(yd.exp), money(yd.pos) + ' POS · ' + money(yd.spent) + ' spent', '', function () { return dayDetail(yd); }) +
+      stat('Occupancy now', occ + ' / ' + rooms.length, Math.round(occ / Math.max(1, rooms.length) * 100) + '%', '', function () { return bdRoomsByStatus(rooms); }) +
+      stat('Guests owing', money(sum(owe, function (s) { return s.balance; })), owe.length + ' stay' + (owe.length === 1 ? '' : 's') + ' · ' + money(td.spent) + ' spent today', owe.length ? 'warn' : '', function () { return bdOwing(owe); }) + '</section>';
     html += '<div class="split"><div class="wide"><div class="card"><h2>Leak watch and approvals</h2><div class="stack">' + alertList(al) + '</div></div>' +
       '<div class="card"><div class="card-head"><h2>Payments recorded today</h2><button class="btn small" type="button" onclick="go(\'payments\')">See all</button></div>' +
       (td.list.length ? '<div class="note mb-2">Compare the POS figure with the end-of-day total on the terminal: ' + money(td.pos) + ' from ' + td.list.filter(function (x) { return x.method === 'pos'; }).length + ' slip(s).</div>' + td.list.map(paymentRow).join('') : emptyState('payments', 'No payments yet today', 'Each payment shows here as it is recorded.', '', '', true)) + '</div></div>' +
@@ -98,13 +102,39 @@ function reportHtml(R) {
   var cleanMin = cleans.length ? Math.round(sum(cleans, function (k) { return k.finishedAt - k.startedAt; }) / cleans.length / 60000) : 0;
   var row = function (label, value) { return '<div class="list-row"><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong></div>'; };
   var html = monthPicker(R.month) + '<section class="grid-stats">' +
-    '<div class="stat dark"><span class="label">Income</span><span class="value">' + money(revenue) + '</span><span class="sub">' + money(roomRev) + ' rooms · ' + money(salesRev) + ' item sales' + (cautionKept ? ' · ' + money(cautionKept) + ' caution kept' : '') + '</span></div>' +
-    stat('Expenses', money(spent), exps.length + ' records') + stat('Net', money(revenue - spent), revenue ? Math.round((revenue - spent) / revenue * 100) + '% margin' : '', revenue - spent < 0 ? 'warn' : '') +
-    stat('Occupancy', Math.round(occ * 100) + '%', sold + ' of ' + avail + ' room-nights · ' + money(adr) + ' average room rate') + '</section>' +
+    stat('Income', money(revenue), money(roomRev) + ' rooms · ' + money(salesRev) + ' item sales' + (cautionKept ? ' · ' + money(cautionKept) + ' caution kept' : ''), 'dark', function () {
+      var keptStays = outs.filter(function (s) { return (s.cautionDeductions || 0) + (s.cautionApplied || 0) > 0; });
+      return bdHead(money(revenue), 'Money in this month that counts as income') +
+        bdLine('Rooms (less refunds)', money(roomRev)) + bdLine('Item sales', money(salesRev)) + (cautionKept ? bdLine('Caution fees kept', money(cautionKept)) : '') + bdLine('Total income', money(revenue), true) +
+        bdGroup('Room payments (' + roomPays.length + ')', sortBy(roomPays, function (p) { return p.at; }, true), bdPay, 'None this month.') +
+        bdGroup('Item sales', sortBy(pays.filter(function (p) { return p.kind === 'sale'; }), function (p) { return p.at; }, true), bdPay, 'None this month.') +
+        (keptStays.length ? bdGroup('Caution kept', keptStays, function (s) { return bdStay(s, money((s.cautionDeductions || 0) + (s.cautionApplied || 0)) + ' kept from the caution fee'); }) : '');
+    }) +
+    stat('Expenses', money(spent), exps.length + ' records', '', function () {
+      return bdHead(money(spent), exps.length + (exps.length === 1 ? ' record' : ' records') + ', biggest category first') + Object.keys(cats).sort(function (a, b) { return cats[b] - cats[a]; }).map(function (k) {
+        return bdGroup((EXPENSE_CATS[k] || k) + ' · ' + money(cats[k]), sortBy(exps.filter(function (e) { return e.category === k; }), function (e) { return e.at; }, true), bdExp);
+      }).join('') + (exps.length ? '' : '<div class="muted">No expenses this month.</div>');
+    }) +
+    stat('Net', money(revenue - spent), revenue ? Math.round((revenue - spent) / revenue * 100) + '% margin' : '', revenue - spent < 0 ? 'warn' : '', function () {
+      return bdLine('Rooms (less refunds)', money(roomRev)) + bdLine('Item sales', money(salesRev)) + (cautionKept ? bdLine('Caution fees kept', money(cautionKept)) : '') + bdLine('Income', money(revenue), true) +
+        Object.keys(cats).sort(function (a, b) { return cats[b] - cats[a]; }).map(function (k) { return bdLine('Less ' + (EXPENSE_CATS[k] || k).toLowerCase(), money(-cats[k])); }).join('') +
+        bdLine('Expenses', money(-spent), true) + bdLine('Net', money(revenue - spent), true);
+    }) +
+    stat('Occupancy', Math.round(occ * 100) + '%', sold + ' of ' + avail + ' room-nights · ' + money(adr) + ' average room rate', '', function () {
+      return bdHead(sold + ' of ' + avail + ' room-nights', rooms.length + ' rooms × ' + R.days + ' days · ' + money(adr) + ' average room rate (room income ÷ nights sold)') +
+        '<div class="table-wrap"><table><thead><tr><th>Room</th><th class="right">Nights</th><th class="right">Occupancy</th></tr></thead><tbody>' + rooms.map(function (r) { var n = nightsByRoom[r.number] || 0; return '<tr><td>' + esc(r.number) + '</td><td class="right">' + n + '</td><td class="right">' + Math.round(n / R.days * 100) + '%</td></tr>'; }).join('') + '</tbody></table></div>' +
+        bdGroup('Stays counted (' + R.stays.length + ')', sortBy(R.stays, function (s) { return s.checkInDate; }), function (s) { return bdStay(s, nightsIn(s, R.first, next) + ' night(s) in this month'); });
+    }) + '</section>' +
     '<section class="grid-stats">' +
-    stat('Next 30 days', Math.round(ahead / Math.max(1, rooms.length * 30) * 100) + '% booked', ahead + ' of ' + rooms.length * 30 + ' room-nights already on the books') +
-    stat('Guests owing now', money(sum(owe, function (s) { return s.balance; })), owe.length + ' stay' + (owe.length === 1 ? '' : 's'), owe.length ? 'warn' : '') +
-    stat('Turnover cleaning', cleans.length ? cleanMin + ' min' : '—', cleans.length ? 'Average over ' + cleans.length + ' room' + (cleans.length === 1 ? '' : 's') : 'No finished cleans this month') + '</section>';
+    stat('Next 30 days', Math.round(ahead / Math.max(1, rooms.length * 30) * 100) + '% booked', ahead + ' of ' + rooms.length * 30 + ' room-nights already on the books', '', function () {
+      var l = sortBy(S.data.stays.filter(function (s) { return (s.status === 'reserved' || s.status === 'checked_in') && nightsIn(s, t, t30) > 0; }), function (s) { return s.checkInDate; });
+      return bdHead(ahead + ' room-nights', 'Guests in the house and reservations, ' + fmtDate(t) + ' to ' + fmtDate(t30)) + bdList(l, function (s) { return bdStay(s, nightsIn(s, t, t30) + ' night(s) in the next 30 days'); }, 'Nothing booked.');
+    }) +
+    stat('Guests owing now', money(sum(owe, function (s) { return s.balance; })), owe.length + ' stay' + (owe.length === 1 ? '' : 's'), owe.length ? 'warn' : '', function () { return bdOwing(owe); }) +
+    stat('Turnover cleaning', cleans.length ? cleanMin + ' min' : '—', cleans.length ? 'Average over ' + cleans.length + ' room' + (cleans.length === 1 ? '' : 's') : 'No finished cleans this month', '', function () {
+      return bdHead(cleans.length ? cleanMin + ' min average' : '—', 'From starting the clean to sending it for inspection') +
+        bdList(sortBy(cleans, function (k) { return k.finishedAt; }, true), function (k) { return recRow({ l1: '<strong>Room ' + esc(k.roomNo) + '</strong>', l2: dots([k.assigneeName, fmtDT(k.startedAt)]), side: '<strong>' + Math.round((k.finishedAt - k.startedAt) / 60000) + ' min</strong>', click: "go('task',{id:'" + k.id + "'})" }); }, 'No finished cleans this month.');
+    }) + '</section>';
   html += '<div class="split"><div class="wide"><details class="card fold"><summary><h2>By room</h2><span class="muted">Income per room per night: <strong>' + money(avail ? roomRev / avail : 0) + '</strong></span></summary><div class="table-wrap"><table><thead><tr><th>Room</th><th class="right">Nights</th><th class="right">Occupancy</th><th class="right">Income</th><th class="right">Repairs</th></tr></thead><tbody>' +
     rooms.map(function (r) { var n = nightsByRoom[r.number] || 0; return '<tr><td><strong>' + esc(r.number) + '</strong> <span class="muted small">' + esc(roomType(r).name) + '</span></td><td class="right">' + n + '</td><td class="right">' + Math.round(n / R.days * 100) + '%</td><td class="right money">' + money(revByRoom[r.number] || 0) + '</td><td class="right money">' + money(repByRoom[r.number] || 0) + '</td></tr>'; }).join('') + '</tbody></table></div></details>' +
     '<div class="card"><h2>Where guests came from</h2>' + (Object.keys(src).length ? '<div class="bars">' + Object.keys(src).sort(function (a, b) { return src[b].n - src[a].n; }).map(function (k) { return '<div class="bar-row"><span>' + esc(SOURCES[k] || 'Not recorded') + '</span><span class="bar-track"><span style="width:' + Math.round(src[k].n / maxS * 100) + '%"></span></span><span class="right">' + src[k].n + ' stay' + (src[k].n === 1 ? '' : 's') + ' · ' + src[k].nights + ' nights</span></div>'; }).join('') + '</div>' : '<div class="muted">No stays started this month.</div>') + '</div>' +
@@ -207,7 +237,7 @@ VIEWS.admin = {
     if (tab === 'receipt') { html += adminReceipt(); setTimeout(rdPreview, 0); }
     if (tab === 'security') html += adminSecurity();
     if (tab === 'audit') { html += '<div class="card" id="audit-box">' + skeleton(8) + '</div>'; setTimeout(loadAudit, 0); }
-    if (tab === 'data') html += '<div class="card"><h2>Backup</h2><p class="muted">Downloads everything (except photos) as one JSON file. Do this monthly and keep it safe.</p><button class="btn primary" type="button" onclick="backup()">Download backup</button></div>';
+    if (tab === 'data') html += '<div class="card"><h2>Backup</h2><p class="muted">Downloads everything (except photos) as one JSON file. Do this monthly and keep it safe.</p><button class="btn primary" type="button" onclick="backup()">Download backup</button></div>' + adminCleanup();
     return html;
   }
 };
@@ -555,4 +585,137 @@ function openRulesHelp() {
     '<li>Select everything in the editor, paste, and click <strong>Publish</strong>.</li>' +
     '<li>Come back here and press <strong>Check again</strong>.</li></ol>' +
     '<div class="form-actions"><button class="btn primary" type="button" onclick="closeModal();checkRules().then(function(){toast(S.rulesOutdated ? \'Still the old rules. Publishing can take a minute.\' : \'Rules are up to date\', S.rulesOutdated)})">Check again</button></div>');
+}
+
+/* ---------- Remove test records ---------- */
+// Trial check-ins, payments, sales and the like, made while learning the app. The owner picks a period,
+// unticks anything real, and the rest is deleted for good. Rooms, stock levels and guest balances are put
+// back as they were before; photos attached to the records go too. The activity log keeps a note of it.
+var CLEAN_COLS = [
+  ['stays', 'Stays and reservations', 'createdAt'],
+  ['payments', 'Payments', 'at'],
+  ['moves', 'Stock movements and item sales', 'at'],
+  ['expenses', 'Expenses', 'at'],
+  ['tasks', 'Housekeeping tasks', 'createdAt'],
+  ['jobs', 'Maintenance jobs', 'createdAt'],
+  ['incidents', 'Leak watch items', 'at'],
+  ['laundry', 'Laundry batches', 'sentAt'],
+  ['shifts', 'Front desk shifts', 'openedAt']
+];
+var CLEAN = { from: '', to: '', found: null, skip: {}, open: {}, busy: false };
+function cleanWhen(col, r) { var f = CLEAN_COLS.filter(function (c) { return c[0] === col; })[0]; return r[f ? f[2] : 'at']; }
+// [main line, details (already escaped)]
+function cleanLabel(col, r) {
+  if (col === 'stays') return [r.guestName || 'Guest', dots(['Room ' + r.roomNo, fmtDate(r.checkInDate) + ' → ' + fmtDate(r.checkOutDate), (STAY_STATUS[r.status] || [r.status])[0]])];
+  if (col === 'payments') return [money(r.amount) + ' · ' + (PAY_KIND[r.kind] || r.kind), dots([r.guestName, r.roomNo ? 'Room ' + r.roomNo : '', r.ref ? 'ref ' + r.ref : '', r.status])];
+  if (col === 'moves') return [({ sale: 'Sale', purchase: 'Bought', issue: 'Issued', count: 'Stock count' }[r.type] || 'Adjustment') + ' · ' + Math.abs(r.qty || 0) + ' × ' + (r.itemName || 'item'), dots([r.total ? money(r.total) : '', r.roomNo ? 'Room ' + r.roomNo : '', r.note])];
+  if (col === 'expenses') return [money(r.amount) + ' · ' + (EXPENSE_CATS[r.category] || r.category), dots([r.description, r.status])];
+  if (col === 'tasks') return ['Room ' + r.roomNo + ' · ' + (TASK_TYPE[r.type] || [r.type])[0], dots([r.title, (TASK_STATUS[r.status] || [r.status])[0]])];
+  if (col === 'jobs') return [r.title || 'Job', dots([r.locationLabel, r.cost ? money(r.cost) : '', r.status])];
+  if (col === 'incidents') return [r.title || 'Incident', r.resolved ? 'resolved' : 'open'];
+  if (col === 'laundry') return [r.vendor || 'Laundry', esc((r.items || []).map(function (it) { return it.qty + ' ' + it.name; }).join(', '))];
+  if (col === 'shifts') return ['Shift · ' + (r.openedByName || ''), r.closedAt ? 'closed ' + esc(fmtDT(r.closedAt)) : 'open'];
+  return [r.id, ''];
+}
+// Opening stock is usually real, so it starts unticked
+function cleanDefaultSkip(col, r) { return col === 'moves' && r.type === 'adjust'; }
+function adminCleanup() {
+  var from = CLEAN.from || addDays(todayStr(), -30), to = CLEAN.to || todayStr(), F = CLEAN.found;
+  var h = '<div class="card" id="clean-card"><h2>Remove test records</h2>' +
+    '<p class="muted">For check-ins, payments, sales and other records made while trying the app. Pick the days you were testing, untick anything real, then delete. Rooms, stock levels and guest balances go back to how they were. This cannot be undone, so download a backup first.</p>' +
+    '<form class="form" onsubmit="event.preventDefault();findTestRecords()"><div class="fields">' +
+    field('From', '<input type="date" id="cl-from" value="' + from + '" max="' + todayStr() + '" required>') + field('To', '<input type="date" id="cl-to" value="' + to + '" max="' + todayStr() + '" required>') +
+    '</div><div class="form-actions"><button class="btn" type="button" onclick="backup()">Download backup</button><button class="btn primary" type="submit"' + (CLEAN.busy ? ' disabled' : '') + '>' + (CLEAN.busy === 'find' ? 'Looking…' : 'Find records') + '</button></div></form>';
+  if (F) {
+    var total = 0, picked = 0;
+    var groups = CLEAN_COLS.map(function (c) {
+      var rows = F[c[0]] || []; if (!rows.length) return '';
+      total += rows.length;
+      var on = rows.filter(function (r) { return !CLEAN.skip[c[0] + '/' + r.id]; }).length; picked += on;
+      return '<details class="cl-group"' + ((c[0] in CLEAN.open ? CLEAN.open[c[0]] : rows.length <= 12) ? ' open' : '') + ' ontoggle="CLEAN.open[\'' + c[0] + '\']=this.open"><summary><label class="cl-all" onclick="event.stopPropagation()"><input type="checkbox"' + (on === rows.length ? ' checked' : '') + ' onchange="cleanTickAll(\'' + c[0] + '\',this.checked)"> ' + esc(c[1]) + '</label><span class="muted">' + on + ' of ' + rows.length + ' ticked</span></summary>' +
+        rows.map(function (r) {
+          var l = cleanLabel(c[0], r), k = c[0] + '/' + r.id;
+          return '<label class="cl-row"><input type="checkbox"' + (CLEAN.skip[k] ? '' : ' checked') + ' onchange="cleanTick(\'' + k + '\',this.checked);render()"><span class="main-t"><strong>' + esc(l[0]) + '</strong><span>' + (l[1] ? l[1] + ' · ' : '') + dots([r.byName || r.openedByName || r.sentByName, fmtDT(cleanWhen(c[0], r))]) + '</span></span></label>';
+        }).join('') + '</details>';
+    }).join('');
+    h += '<div class="cl-res">' + (total ? groups +
+      '<div class="note">Anything linked to a ticked stay is removed with it, even from other days: its payments, cleaning tasks and sales on its bill.</div>' +
+      '<div class="form-actions"><button class="btn danger" type="button"' + (picked && !CLEAN.busy ? '' : ' disabled') + ' onclick="deleteTestRecords()">' + (CLEAN.busy === 'del' ? 'Deleting…' : 'Delete ' + picked + ' record' + (picked === 1 ? '' : 's')) + '</button></div>'
+      : '<div class="muted">Nothing was recorded between ' + fmtDate(CLEAN.from) + ' and ' + fmtDate(CLEAN.to) + '.</div>') + '</div>';
+  }
+  return h + '</div>';
+}
+function cleanTick(k, on) { if (on) delete CLEAN.skip[k]; else CLEAN.skip[k] = true; }
+function cleanTickAll(col, on) { (CLEAN.found[col] || []).forEach(function (r) { cleanTick(col + '/' + r.id, on); }); render(); }
+async function findTestRecords() {
+  var from = val('cl-from'), to = val('cl-to');
+  if (!from || !to || from > to) return toast('Pick a start day before the end day', true);
+  CLEAN.from = from; CLEAN.to = to; CLEAN.busy = 'find'; viewDirty = false; render();
+  var start = parseDate(from).getTime(), end = parseDate(addDays(to, 1)).getTime(), found = {}, skip = {};
+  try {
+    for (var i = 0; i < CLEAN_COLS.length; i++) {
+      var c = CLEAN_COLS[i], snap = await db.collection(c[0]).where(c[2], '>=', start).where(c[2], '<', end).get();
+      found[c[0]] = sortBy(docRows(snap), function (r) { return r[c[2]] || 0; });
+      found[c[0]].forEach(function (r) { if (cleanDefaultSkip(c[0], r)) skip[c[0] + '/' + r.id] = true; });
+    }
+    CLEAN.found = found; CLEAN.skip = skip;
+  } catch (e) { fail(e); }
+  CLEAN.busy = false; render();
+}
+// Photo ids sit in fields such as photos, idPhotos, afterPhotos, receiptPhotos
+function cleanPhotoIds(r) { var out = []; Object.keys(r).forEach(function (k) { if (/photos$/i.test(k) && Array.isArray(r[k])) r[k].forEach(function (p) { if (typeof p === 'string' && p) out.push(p); }); }); return out; }
+async function deleteTestRecords() {
+  var F = CLEAN.found; if (!F || CLEAN.busy) return;
+  var sel = {}; CLEAN_COLS.forEach(function (c) { sel[c[0]] = (F[c[0]] || []).filter(function (r) { return !CLEAN.skip[c[0] + '/' + r.id]; }); });
+  var stayIds = {}; sel.stays.forEach(function (s) { stayIds[s.id] = 1; });
+  CLEAN.busy = 'del'; render();
+  try {
+    // Records hanging off a ticked stay, whatever day they were made
+    var linked = 0, ids = Object.keys(stayIds), lk = ['payments', 'tasks', 'moves'];
+    for (var i = 0; i < ids.length; i++) {
+      for (var j = 0; j < lk.length; j++) {
+        var snap = await db.collection(lk[j]).where('stayId', '==', ids[i]).get();
+        docRows(snap).forEach(function (r) { if (!sel[lk[j]].some(function (x) { return x.id === r.id; })) { sel[lk[j]].push(r); linked++; } });
+      }
+    }
+    var count = sum(Object.keys(sel), function (k) { return sel[k].length; });
+    var parts = CLEAN_COLS.filter(function (c) { return sel[c[0]].length; }).map(function (c) { return sel[c[0]].length + ' ' + c[1].toLowerCase(); });
+    var typed = await askText({ title: 'Delete ' + count + ' record' + (count === 1 ? '' : 's') + ' for good?', text: parts.join('\n') + (linked ? '\n(' + linked + ' of these are linked to the ticked stays.)' : '') + '\n\nThis cannot be undone. Type DELETE to go ahead.', label: 'Type DELETE', ok: 'Delete for good', danger: true });
+    if (!typed || typed.trim().toUpperCase() !== 'DELETE') { CLEAN.busy = false; render(); if (typed) toast('Nothing deleted: the word did not match', true); return; }
+    var ops = [], qty = {}, stays = {};
+    Object.keys(sel).forEach(function (col) {
+      sel[col].forEach(function (r) {
+        ops.push(function (b) { b.delete(db.collection(col).doc(r.id)); });
+        cleanPhotoIds(r).forEach(function (pid) { ops.push(function (b) { b.delete(db.collection('photos').doc(pid)); }); });
+        // Stock goes back to what it was before this movement
+        if (col === 'moves' && r.itemId && byId(S.data.items, r.itemId) && r.qty) qty[r.itemId] = (qty[r.itemId] || 0) - r.qty;
+      });
+    });
+    Object.keys(qty).forEach(function (id) { if (qty[id]) ops.push(function (b) { b.update(db.collection('items').doc(id), { qty: FV.increment(qty[id]) }); }); });
+    // A payment taken off a stay that is kept: the guest owes it again (as when a payment is voided)
+    for (var p = 0; p < sel.payments.length; p++) {
+      var x = sel.payments[p], a = x.amount;
+      if (!x.stayId || stayIds[x.stayId] || !(a > 0) || x.status === 'void' || x.status === 'rejected') continue;
+      if (PAY_ON_STAY.indexOf(x.kind) < 0 && x.kind !== 'caution') continue;
+      var s = stays[x.stayId] || findStay(x.stayId);
+      if (!s) { var d = await db.collection('stays').doc(x.stayId).get(); if (!d.exists) continue; s = Object.assign({ id: d.id }, d.data()); }
+      stays[x.stayId] = s;
+      (function (x, s, a) {
+        if (x.kind === 'caution') ops.push(function (b) { b.update(db.collection('stays').doc(s.id), { caution: FV.increment(-a) }); });
+        else ops.push(function (b) { b.update(db.collection('stays').doc(s.id), s.status === 'reserved' ? { paid: FV.increment(-a), deposit: FV.increment(-a) } : { paid: FV.increment(-a), balance: FV.increment(a) }); });
+      })(x, s, a);
+    }
+    // Rooms that held a deleted stay are free again
+    var freed = S.data.rooms.filter(function (r) { return r.currentStayId && stayIds[r.currentStayId]; });
+    freed.forEach(function (r) { ops.push(function (b) { b.update(db.collection('rooms').doc(r.id), { status: 'ready', currentStayId: null }); }); });
+    var note = parts.join(', ') + ' · recorded ' + CLEAN.from + ' to ' + CLEAN.to;
+    for (var k = 0; k < ops.length; k += 400) {
+      var b = db.batch(); ops.slice(k, k + 400).forEach(function (fn) { fn(b); });
+      if (k === 0) audit('test_records_deleted', 'all', '', note, b);
+      await b.commit();
+    }
+    CLEAN.found = null; CLEAN.skip = {};
+    toast(count + ' test record' + (count === 1 ? '' : 's') + ' deleted' + (freed.length ? '. Room' + (freed.length === 1 ? ' ' : 's ') + freed.map(function (r) { return r.number; }).join(', ') + (freed.length === 1 ? ' is' : ' are') + ' Ready again.' : ''));
+  } catch (e) { fail(e); }
+  CLEAN.busy = false; render();
 }

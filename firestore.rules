@@ -113,7 +113,7 @@ service cloud.firestore {
                 && (('total' in resource.data)
                     ? billNotShrunk(resource.data, request.resource.data)
                     : firstBillOk(request.resource.data))));
-      allow delete: if false;
+      allow delete: if admin(); // the owner removing test records (Admin settings → Data)
     }
 
     // Staff record money in as "unconfirmed"; only the owner confirms it ("seen in bank"), marks it
@@ -126,7 +126,7 @@ service cloud.firestore {
             || (request.resource.data.amount < 0 && request.resource.data.status == 'unconfirmed')
             || (request.resource.data.kind == 'refund' && anyRole(['manager'])));
       allow update: if admin();
-      allow delete: if false;
+      allow delete: if admin(); // the owner removing test records (Admin settings → Data)
     }
 
     // A turnover clean is only "done" when the front desk or a manager passes the inspection.
@@ -142,7 +142,7 @@ service cloud.firestore {
 
     match /jobs/{id} {
       allow read, create, update: if active();
-      allow delete: if false;
+      allow delete: if admin(); // the owner removing test records (Admin settings → Data)
     }
 
     match /assets/{id} {
@@ -170,7 +170,8 @@ service cloud.firestore {
     match /moves/{id} {
       allow read: if active();
       allow create: if active() && stampedByMe();
-      allow update, delete: if false;
+      allow update: if false;
+      allow delete: if admin(); // test records only; the stock level is put back at the same time
     }
 
     // Expenses above the approval limit must be saved as "pending".
@@ -181,22 +182,22 @@ service cloud.firestore {
             || admin()
             || (request.resource.data.status == 'approved' && request.resource.data.amount <= settings().approvalLimit));
       allow update: if admin();
-      allow delete: if false;
+      allow delete: if admin(); // the owner removing test records (Admin settings → Data)
     }
 
     match /incidents/{id} {
       allow read: if desk();
       allow create: if active() && stampedByMe();
       allow update: if anyRole(['manager']);
-      allow delete: if false;
+      allow delete: if admin(); // the owner removing test records (Admin settings → Data)
     }
 
-    // Laundry batches: anyone on staff can send and count back; nobody deletes.
+    // Laundry batches: anyone on staff can send and count back; only the owner deletes (test records).
     match /laundry/{id} {
       allow read: if active();
       allow create: if active() && stampedByMe();
       allow update: if active();
-      allow delete: if false;
+      allow delete: if admin(); // the owner removing test records (Admin settings → Data)
     }
 
     // Front desk shifts: opened by yourself; closed by you, accepted by the next person.
@@ -204,7 +205,7 @@ service cloud.firestore {
       allow read: if desk();
       allow create: if desk() && request.resource.data.openedBy == request.auth.uid;
       allow update: if desk();
-      allow delete: if false;
+      allow delete: if admin(); // the owner removing test records (Admin settings → Data)
     }
 
     // Photos (guest IDs, slips, damage): opened one at a time by staff who hold the link to it
