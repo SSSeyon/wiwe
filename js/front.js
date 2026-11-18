@@ -420,7 +420,7 @@ function openStay(id) {
     info('Guest', s.guestName + (s.guests > 1 ? ' + ' + (s.guests - 1) + ' more' : '')) + info('Phone', s.phone) + info('ID', (s.idType || '') + ' ' + (s.idNumber || '')) +
     (s.address ? info('Address', s.address) : '') + (s.vehicle ? info('Vehicle', s.vehicle) : '') + (s.source ? info('Booked through', SOURCES[s.source] || s.source) : '') +
     info('Dates', fmtDate(s.checkInDate) + ' → ' + fmtDate(s.checkOutDate)) + info('Nights', s.nights) + (s.status === 'reserved' ? '' : info('Key card', (s.cardNo || '—') + (s.status === 'checked_out' ? (s.cardReturned ? ' · returned' : ' · NOT returned') : ''))) +
-    (s.status === 'reserved' ? info('Deposit paid', money(s.paid || 0)) : '') +
+    (s.status === 'reserved' ? info('Stay cost', money(rvCost(s))) + info('Deposit paid', money(s.paid || 0)) + info('Outstanding', rvOwe(s) ? money(rvOwe(s)) : 'Fully paid') : '') +
     (s.extras ? info('Items on bill', money(s.extras)) : '') +
     (s.total != null ? info('Room total', money(s.total) + (s.discount ? ' (incl. ' + money(s.discount) + ' discount, ' + s.discountStatus + ')' : '')) : '') +
     (s.total != null ? info('Paid', money(s.paid || 0)) + info((s.balance || 0) < 0 ? 'In credit' : 'Balance owed', money(Math.abs(s.balance || 0))) : '') +
@@ -442,6 +442,7 @@ function openStay(id) {
   var acts = [];
   if (s.status === 'reserved' && desk) {
     acts.push('<button class="btn primary" type="button" onclick="openCheckIn(\'' + s.roomId + '\',\'' + s.id + '\')">Check in</button>');
+    if (sum(rvRooms(s), rvOwe) > 0) acts.push('<button class="btn" type="button" onclick="openAddDeposit(\'' + s.id + '\')">Add deposit</button>');
     acts.push('<button class="btn" type="button" onclick="endReservation(\'' + s.id + '\',\'no_show\')">Mark no-show</button>');
     acts.push('<button class="btn danger" type="button" onclick="endReservation(\'' + s.id + '\',\'cancelled\')">Cancel reservation</button>');
   }
@@ -560,6 +561,53 @@ async function saveExtend() {
   b.commit().catch(fail);
   closeModal(); toast(only ? 'Payment recorded' : 'Stay extended to ' + fmtDate(newOut));
 }
+/* ---------- More deposit on a reservation (covers every reserved room of a group booking) ---------- */
+function rvCost(x) { return stayRate(x) * (x.nights || 0); }
+function rvOwe(x) { return Math.max(0, rvCost(x) - (x.paid || 0)); }
+function rvRooms(s) { return groupStays(s).filter(function (x) { return x.status === 'reserved'; }); }
+function openAddDeposit(id) {
+  var s = findStay(id); if (!s || s.status !== 'reserved') return;
+  var rs = rvRooms(s), cost = sum(rs, rvCost), paid = sum(rs, function (x) { return x.paid || 0; }), owe = sum(rs, rvOwe);
+  S.form = { payPhotos: [], stayId: id };
+  var rows = rs.length > 1 ? '<div class="card">' + rs.map(function (x) { return '<div class="row between"><span>Room ' + esc(x.roomNo) + ' · ' + x.nights + ' night' + (x.nights > 1 ? 's' : '') + '</span><span class="money">' + money(x.paid || 0) + ' of ' + money(rvCost(x)) + '</span></div>'; }).join('') + '</div>' : '';
+  var b = '<form class="form" onsubmit="event.preventDefault();saveAddDeposit()"><div class="fields">' +
+    info(rs.length > 1 ? 'Stay cost · ' + rs.length + ' rooms' : 'Stay cost', money(cost)) + info('Paid so far', money(paid)) +
+    '<div class="field">Outstanding<span class="static strong" id="ad-owe">' + money(owe) + '</span></div>' +
+    '<div class="field">Left after this payment<span class="static" id="ad-left">' + money(owe) + '</span></div></div>' + rows +
+    payChoices('ad-method') + '</div>' +
+    '<div class="fields">' + field('Amount received (₦)', input('ad-amount', '', 'inputmode="numeric" required oninput="adCalc()"'), '', rs.length > 1 ? 'Shared across the rooms by what each still owes.' : '') +
+    field('Reference', input('ad-ref', '', 'autocomplete="off"'), '', 'POS slip or transfer session ID') + photoField('payPhotos', 'Photo of the receipt (optional)') + '</div>' + payNote() +
+    '<div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button type="submit" class="btn primary" id="ad-save">Save deposit</button></div></form>';
+  openModal('Add deposit · ' + s.guestName, b);
+  if (!owe) $('ad-left').textContent = 'Fully paid already';
+}
+function adCalc() {
+  var s = findStay(S.form.stayId); if (!s) return;
+  var owe = sum(rvRooms(s), rvOwe), a = num(val('ad-amount'));
+  $('ad-left').textContent = a > owe ? money(a - owe) + ' too much' : money(owe - a) + (a === owe && a ? ' · fully paid' : '');
+}
+async function saveAddDeposit() {
+  var s = findStay(S.form.stayId); if (!s || s.status !== 'reserved') return toast('This reservation has changed. Open it again.', true);
+  var rs = rvRooms(s), owe = sum(rs, rvOwe), amount = num(val('ad-amount')), ref = val('ad-ref'), method = radio('ad-method');
+  if (amount <= 0) return toast('Enter the amount received', true);
+  if (amount > owe) return toast('That is more than the ' + money(owe) + ' outstanding. Check the amount.', true);
+  if (!ref) return toast('Enter the reference for the payment', true);
+  if (!(await refOk(ref, s.id))) return;
+  rememberPayMethod(method);
+  if ($('ad-save')) $('ad-save').disabled = true;
+  // shared by what each room still owes; the last room takes what is left so it adds up exactly
+  var owing = rs.filter(function (x) { return rvOwe(x) > 0; }), left = amount, b = db.batch();
+  owing.forEach(function (x, i) {
+    var share = i === owing.length - 1 ? left : Math.min(rvOwe(x), Math.round(amount * rvOwe(x) / owe)); left -= share;
+    if (share <= 0) return;
+    // increments, so two phones recording at once never overwrite each other
+    b.update(db.collection('stays').doc(x.id), { paid: FV.increment(share), deposit: FV.increment(share) });
+    b.set(db.collection('payments').doc(), Object.assign({ stayId: x.id, roomNo: x.roomNo, guestName: x.guestName, amount: share, kind: 'deposit', method: method, sender: '', ref: ref, photos: S.form.payPhotos || [], status: payStatus(), groupId: x.groupId || '' }, stamp()));
+  });
+  audit('deposit', 'stay', s.id, s.guestName + ' · Room' + (rs.length > 1 ? 's ' : ' ') + rs.map(function (x) { return x.roomNo; }).join(', ') + ' · ' + money(amount) + ' · ' + money(owe - amount) + ' left', b);
+  b.commit().catch(fail);
+  closeModal(); toast('Deposit of ' + money(amount) + ' recorded. ' + (owe - amount ? money(owe - amount) + ' still to pay.' : 'Fully paid.'));
+}
 /* ---------- Check-out ---------- */
 function openCheckOut(id) {
   var s = findStay(id), r = byId(S.data.rooms, s.roomId), type = roomType(r), bal = Math.max(0, s.balance || 0);
@@ -649,7 +697,7 @@ VIEWS.stays = {
     return html + '<div class="table-wrap"><table><thead><tr><th>Guest</th><th>Room</th><th>Dates</th><th>Nights</th><th class="right">Total</th><th>Status</th></tr></thead><tbody>' +
       list.slice(0, 200).map(function (s) {
         var ss = STAY_STATUS[s.status] || ['', ''];
-        return '<tr class="clickable" onclick="openStay(\'' + s.id + '\')"><td><strong>' + esc(s.guestName) + '</strong><div class="muted small">' + esc(s.phone || '') + '</div></td><td>' + esc(s.roomNo) + (s.groupId ? ' <span class="muted small">group</span>' : '') + '</td><td>' + fmtDate(s.checkInDate) + ' → ' + fmtDate(s.checkOutDate) + '</td><td>' + (s.nights || '') + '</td><td class="right money">' + (s.total != null ? money(s.total) : '—') + '</td><td>' + pill(ss[0], ss[1]) + (isOverstay(s) ? ' ' + pill('Overstay', 'st-bad') : '') + ((s.balance || 0) > 0 ? ' ' + pill('Owes ' + money(s.balance), 'st-alert') : '') + '</td></tr>';
+        return '<tr class="clickable" onclick="openStay(\'' + s.id + '\')"><td><strong>' + esc(s.guestName) + '</strong><div class="muted small">' + esc(s.phone || '') + '</div></td><td>' + esc(s.roomNo) + (s.groupId ? ' <span class="muted small">group</span>' : '') + '</td><td>' + fmtDate(s.checkInDate) + ' → ' + fmtDate(s.checkOutDate) + '</td><td>' + (s.nights || '') + '</td><td class="right money">' + (s.total != null ? money(s.total) : s.status === 'reserved' ? money(rvCost(s)) : '—') + '</td><td>' + pill(ss[0], ss[1]) + (isOverstay(s) ? ' ' + pill('Overstay', 'st-bad') : '') + ((s.balance || 0) > 0 ? ' ' + pill('Owes ' + money(s.balance), 'st-alert') : '') + (s.status === 'reserved' ? ' ' + (rvOwe(s) ? pill(money(rvOwe(s)) + ' to pay', 'st-alert') : pill('Paid', 'st-ready')) : '') + '</td></tr>';
       }).join('') + '</tbody></table></div>';
   }
 };

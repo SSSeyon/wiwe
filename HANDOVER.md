@@ -468,3 +468,12 @@ This reverses the "No owner confirmation" part of section 22.
 - The localStorage copy from v3.7.1 stays as a fallback: it is used until the account has a `bellSeen` (offline, or before the v3.7.2 rules are published). A refused write is ignored quietly.
 - Codes for items no longer waiting are dropped, but only once the app has been open 20 seconds and is online, so a device still loading its lists does not wipe what another device saved.
 - **Rules:** a user may now also change `bellSeen` on their own document (a map, at most 300 entries). Until these rules are published, clearing works per phone only.
+
+## 33. v3.8.0: more deposits on a reservation, with the outstanding amount
+
+- A reserved stay now shows **Stay cost**, **Deposit paid** and **Outstanding** (room type rate × nights − paid). The Upcoming list shows the stay cost and a "₦… to pay" or "Paid" pill.
+- **Add deposit** (on a reserved stay while anything is outstanding): shows cost, paid so far and outstanding for the whole booking (all reserved rooms of a group), with each room's paid/cost, and "Left after this payment" as the amount is typed. It refuses more than the outstanding amount and needs a reference (checked for reuse like every other payment).
+- For a group, the amount is shared across the rooms by what each still owes; the last room takes the remainder so it adds up exactly. Each room gets its own `deposit` payment (same reference and `groupId`), and the stay's `paid` and `deposit` go up by increments.
+- Check-in already takes `paid` off as "Deposit already paid", and receipts already list every payment, so both pick up the extra deposits with no changes.
+- No rules change: front desk could already add payments and update these stay fields.
+- Tested in the local mock: a 2-room booking (₦60,000 + ₦20,000) with a ₦20,000 deposit, then ₦30,000 more (split 22,500/7,500), an overpayment refused, the last ₦30,000 marking it fully paid and hiding the button, and check-in collecting ₦0.

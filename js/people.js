@@ -374,6 +374,7 @@ var MANUAL = [
   { id: 'reserve', t: 'Reservations', who: ['manager', 'frontdesk'], p: [
     'New reservation holds a room for future dates, with or without a deposit.',
     'Booking several rooms for one guest: tick each room. A Nights per room box appears, so one room can be booked for 3 nights and another for 1. The deposit is shared across the rooms by what each costs.',
+    'More money before arrival: open the reservation and press Add deposit. It shows the stay cost, what has been paid and what is still outstanding. For a group booking it covers all the reserved rooms together.',
     'If the guest has not arrived some hours after the expected time, the app flags a possible no-show: check them in or release the room.'] },
   { id: 'stay', t: 'During the stay and check-out', who: ['manager', 'frontdesk'], p: [
     'Open the stay from the room board or Stays to take more payments, extend, move to another room or send a receipt by WhatsApp.',
